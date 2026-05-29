@@ -707,59 +707,38 @@ const Logs = ({ userId }) => {
 // ─── OBSIDIAN-STYLE NOTES + JOURNAL (combined tab) ────────────────────────────
 const NotesAndJournal = ({ userId }) => {
   const [subTab, setSubTab] = useState("notes");
-  // Notes (Obsidian-style)
   const [notes, setNotes] = useSynced("obsidian_notes", [], userId);
   const [activeNote, setActiveNote] = useState(null);
   const [noteTitle, setNoteTitle] = useState("");
   const [noteBody, setNoteBody] = useState("");
-  const [noteSearch, setNoteSearch] = useState("");
   const [noteTags, setNoteTags] = useState("");
+  const [noteSearch, setNoteSearch] = useState("");
   const [attachments, setAttachments] = useState([]);
+  const [isPreview, setIsPreview] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const noteFileRef = useRef();
-  // Journal
+  const [urlInput, setUrlInput] = useState("");
   const [posts, setPosts] = useSynced("journal_posts", [], userId);
   const [journalView, setJournalView] = useState("list");
   const [activePost, setActivePost] = useState(null);
   const [jTitle, setJTitle] = useState(""); const [jBody, setJBody] = useState(""); const [jMood, setJMood] = useState("Neutral"); const [jSearch, setJSearch] = useState("");
   const [jAttachments, setJAttachments] = useState([]);
   const jFileRef = useRef();
+  const [jUrlInput, setJUrlInput] = useState("");
   const moods = ["Neutral", "Good", "Great", "Rough", "Motivated", "Tired", "Reflective"];
 
-  // Note handlers
-  const openNote = (note) => { setActiveNote(note); setNoteTitle(note.title); setNoteBody(note.body); setNoteTags(note.tags || ""); setAttachments(note.attachments || []); };
+  const openNote = (note) => { setActiveNote(note); setNoteTitle(note.title); setNoteBody(note.body); setNoteTags(note.tags || ""); setAttachments(note.attachments || []); setIsPreview(false); };
   const saveNote = () => {
     const updated = { ...activeNote, title: noteTitle || "Untitled", body: noteBody, tags: noteTags, attachments, updated: new Date().toLocaleDateString() };
-    if (activeNote.id === "new") {
-      const newNote = { ...updated, id: Date.now(), created: new Date().toLocaleDateString() };
-      setNotes([newNote, ...notes]); setActiveNote(newNote);
-    } else setNotes(notes.map(n => n.id === activeNote.id ? updated : n));
+    if (activeNote.id === "new") { const n = { ...updated, id: Date.now(), created: new Date().toLocaleDateString() }; setNotes([n, ...notes]); setActiveNote(n); }
+    else setNotes(notes.map(n => n.id === activeNote.id ? updated : n));
   };
-  const newNote = () => { const n = { id: "new", title: "", body: "", tags: "", attachments: [], created: new Date().toLocaleDateString(), updated: new Date().toLocaleDateString() }; openNote(n); };
+  const newNote = () => openNote({ id: "new", title: "", body: "", tags: "", attachments: [], created: new Date().toLocaleDateString(), updated: new Date().toLocaleDateString() });
   const deleteNote = id => { setNotes(notes.filter(n => n.id !== id)); setActiveNote(null); };
-
-  const handleNoteFile = e => {
-    const files = Array.from(e.target.files);
-    files.forEach(file => {
-      if (file.type.startsWith("image/")) {
-        const r = new FileReader(); r.onload = ev => setAttachments(a => [...a, { type: "image", name: file.name, data: ev.target.result }]); r.readAsDataURL(file);
-      } else setAttachments(a => [...a, { type: "file", name: file.name }]);
-    });
-  };
-
-  const handleJFile = e => {
-    const files = Array.from(e.target.files);
-    files.forEach(file => {
-      if (file.type.startsWith("image/") || file.type.startsWith("video/")) {
-        const r = new FileReader(); r.onload = ev => setJAttachments(a => [...a, { type: file.type.startsWith("video/") ? "video" : "image", name: file.name, data: ev.target.result }]); r.readAsDataURL(file);
-      } else setJAttachments(a => [...a, { type: "file", name: file.name }]);
-    });
-  };
-
-  const [urlInput, setUrlInput] = useState("");
+  const handleNoteFile = e => { Array.from(e.target.files).forEach(file => { if (file.type.startsWith("image/")) { const r = new FileReader(); r.onload = ev => setAttachments(a => [...a, { type: "image", name: file.name, data: ev.target.result }]); r.readAsDataURL(file); } else setAttachments(a => [...a, { type: "file", name: file.name }]); }); };
   const addUrl = () => { if (!urlInput.trim()) return; setAttachments(a => [...a, { type: "url", name: urlInput.trim(), data: urlInput.trim() }]); setUrlInput(""); };
-  const [jUrlInput, setJUrlInput] = useState("");
+  const handleJFile = e => { Array.from(e.target.files).forEach(file => { if (file.type.startsWith("image/") || file.type.startsWith("video/")) { const r = new FileReader(); r.onload = ev => setJAttachments(a => [...a, { type: file.type.startsWith("video/") ? "video" : "image", name: file.name, data: ev.target.result }]); r.readAsDataURL(file); } else setJAttachments(a => [...a, { type: "file", name: file.name }]); }); };
   const addJUrl = () => { if (!jUrlInput.trim()) return; setJAttachments(a => [...a, { type: "url", name: jUrlInput.trim(), data: jUrlInput.trim() }]); setJUrlInput(""); };
-
   const saveJournal = () => {
     if (!jBody.trim()) return;
     const post = { id: Date.now(), title: jTitle.trim() || new Date().toLocaleDateString("en-US", { month: "long", day: "numeric" }), body: jBody.trim(), mood: jMood, date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }), wordCount: jBody.trim().split(/\s+/).length, attachments: jAttachments };
@@ -769,8 +748,26 @@ const NotesAndJournal = ({ userId }) => {
   const filteredNotes = notes.filter(n => n.title?.toLowerCase().includes(noteSearch.toLowerCase()) || n.body?.toLowerCase().includes(noteSearch.toLowerCase()) || n.tags?.toLowerCase().includes(noteSearch.toLowerCase()));
   const filteredPosts = posts.filter(p => p.title?.toLowerCase().includes(jSearch.toLowerCase()) || p.body?.toLowerCase().includes(jSearch.toLowerCase()));
 
+  const renderMd = (text) => {
+    if (!text) return "<p style='color:#4a5080;font-style:italic'>Nothing to preview yet.</p>";
+    return text
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+      .replace(/^######\s+(.+)$/gm,"<h6>$1</h6>").replace(/^#####\s+(.+)$/gm,"<h5>$1</h5>")
+      .replace(/^####\s+(.+)$/gm,"<h4>$1</h4>").replace(/^###\s+(.+)$/gm,"<h3>$1</h3>")
+      .replace(/^##\s+(.+)$/gm,"<h2>$1</h2>").replace(/^#\s+(.+)$/gm,"<h1>$1</h1>")
+      .replace(/\*\*\*(.+?)\*\*\*/g,"<strong><em>$1</em></strong>").replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g,"<em>$1</em>").replace(/~~(.+?)~~/g,"<del>$1</del>")
+      .replace(/`([^`\n]+)`/g,"<code>$1</code>")
+      .replace(/^```[\w]*\n?([\s\S]*?)```/gm,"<pre><code>$1</code></pre>")
+      .replace(/^-{3,}$/gm,"<hr/>").replace(/^>\s+(.+)$/gm,"<blockquote>$1</blockquote>")
+      .replace(/^-\s+\[x\]\s+(.+)$/gm,'<div class="cb"><input type="checkbox" checked disabled/> $1</div>')
+      .replace(/^-\s+\[\s?\]\s+(.+)$/gm,'<div class="cb"><input type="checkbox" disabled/> $1</div>')
+      .replace(/^[-*]\s+(.+)$/gm,"<li>$1</li>").replace(/\[(.+?)\]\((.+?)\)/g,'<a href="$2" target="_blank">$1</a>')
+      .replace(/\n\n+/g,"</p><p>").replace(/^([^<].+)$/gm,"$1");
+  };
+
   const AttachmentPreview = ({ items, onRemove }) => (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
       {items.map((a, i) => (
         <div key={i} style={{ position: "relative", background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 6, overflow: "hidden" }}>
           {a.type === "image" && <img src={a.data} alt={a.name} style={{ width: 80, height: 60, objectFit: "cover", display: "block" }} />}
@@ -783,61 +780,116 @@ const NotesAndJournal = ({ userId }) => {
     </div>
   );
 
+  const mdCss = `
+    .md-preview{font-size:15px;line-height:1.85;color:#c0c8e0}
+    .md-preview h1{font-size:1.7em;font-weight:700;margin:.5em 0 .25em;color:#e8eaf6;border-bottom:1px solid rgba(30,60,120,.35);padding-bottom:.2em}
+    .md-preview h2{font-size:1.35em;font-weight:600;margin:.7em 0 .2em;color:#d0d8f0}
+    .md-preview h3{font-size:1.1em;font-weight:600;margin:.6em 0 .15em;color:#b0bcdc}
+    .md-preview h4,.md-preview h5,.md-preview h6{font-size:1em;font-weight:600;color:#9099c0;margin:.4em 0}
+    .md-preview p{margin:.4em 0}
+    .md-preview strong{color:#e8eaf6;font-weight:700}
+    .md-preview em{color:#b0c0e0;font-style:italic}
+    .md-preview del{color:#604060;text-decoration:line-through}
+    .md-preview code{background:rgba(40,60,120,.3);border:1px solid rgba(40,80,160,.25);border-radius:3px;padding:1px 5px;font-family:'JetBrains Mono',monospace;font-size:.85em;color:#88aaff}
+    .md-preview pre{background:rgba(5,5,20,.85);border:1px solid rgba(30,60,120,.3);border-radius:6px;padding:14px 16px;overflow-x:auto;margin:.7em 0}
+    .md-preview pre code{background:none;border:none;padding:0;font-size:.9em;color:#a0b8ff}
+    .md-preview blockquote{border-left:3px solid #4a78ff;margin:.7em 0;padding:5px 14px;background:rgba(40,80,200,.08);color:#8090c0;border-radius:0 4px 4px 0}
+    .md-preview hr{border:none;border-top:1px solid rgba(30,60,120,.3);margin:1.1em 0}
+    .md-preview li{margin:.25em 0;line-height:1.7;list-style:disc;margin-left:1.4em}
+    .md-preview a{color:#6090ff;text-decoration:none}.md-preview a:hover{text-decoration:underline}
+    .md-preview .cb{display:flex;align-items:center;gap:6px;margin:.25em 0}.md-preview .cb input{accent-color:#4a78ff}
+    .obsidian-editor{font-family:'JetBrains Mono',monospace;font-size:14px;line-height:1.85;color:#c8d0e8;background:transparent;border:none;width:100%;height:100%;resize:none;outline:none;white-space:pre-wrap;tab-size:2}
+    .obsidian-editor::placeholder{color:#2a2a4a}
+  `;
+
   return (
-    <div className="fade-up">
-      {/* Sub-tab switcher */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 20, borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
-        {["notes", "journal"].map(t => <button key={t} onClick={() => setSubTab(t)} style={{ padding: "6px 16px", borderRadius: 4, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", background: subTab === t ? C.accentGlow : "transparent", border: `1px solid ${subTab === t ? C.borderHi : "transparent"}`, color: subTab === t ? C.accent : C.muted, transition: "all 0.15s", letterSpacing: "0.04em" }}>{t === "notes" ? "Notes" : "Journal"}</button>)}
-      </div>
+    <div className="fade-up" style={isFullscreen ? { position:"fixed", inset:0, zIndex:200, background:C.bg, display:"flex", flexDirection:"column" } : {}}>
+      <style>{mdCss}</style>
 
-      {/* ── NOTES (Obsidian-style) ── */}
+      {!isFullscreen && (
+        <div style={{ display:"flex", gap:8, marginBottom:16, borderBottom:`1px solid ${C.border}`, paddingBottom:12 }}>
+          {["notes","journal"].map(t => (
+            <button key={t} onClick={() => setSubTab(t)} style={{ padding:"5px 14px", borderRadius:4, border:"none", cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:500, background:subTab===t?C.accentGlow:"transparent", color:subTab===t?C.accent:C.muted, borderBottom:`2px solid ${subTab===t?C.accent:"transparent"}`, transition:"all .15s", textTransform:"capitalize" }}>{t}</button>
+          ))}
+        </div>
+      )}
+
+      {/* ── NOTES (Obsidian layout) ── */}
       {subTab === "notes" && (
-        <div style={{ display: "grid", gridTemplateColumns: activeNote ? "240px 1fr" : "1fr", gap: 14, minHeight: 500 }}>
-          {/* Sidebar */}
-          <div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              <Input value={noteSearch} onChange={e => setNoteSearch(e.target.value)} placeholder="Search notes..." style={{ flex: 1, fontSize: 12 }} />
-              <Btn size="sm" variant="primary" onClick={newNote}>+</Btn>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              {filteredNotes.map(n => (
-                <div key={n.id} onClick={() => openNote(n)} style={{ padding: "9px 12px", borderRadius: 6, cursor: "pointer", background: activeNote?.id === n.id ? C.accentGlow : C.surface, border: `1px solid ${activeNote?.id === n.id ? C.borderHi : C.border}`, transition: "all 0.15s" }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: activeNote?.id === n.id ? C.accent : C.text, marginBottom: 2 }}>{n.title || "Untitled"}</div>
-                  <div style={{ fontSize: 10, color: C.dim }}>{n.updated}</div>
-                  {n.tags && <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>{n.tags}</div>}
-                </div>
-              ))}
-              {notes.length === 0 && <div style={{ color: C.dim, fontSize: 12, textAlign: "center", padding: 20 }}>No notes yet. Hit + to start.</div>}
-            </div>
-          </div>
+        <div style={{ display:"flex", height:isFullscreen?"100vh":"calc(100vh - 210px)", minHeight:500, border:`1px solid ${C.border}`, borderRadius:isFullscreen?0:8, overflow:"hidden" }}>
 
-          {/* Editor */}
-          {activeNote && (
-            <Card style={{ display: "flex", flexDirection: "column" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <input value={noteTitle} onChange={e => setNoteTitle(e.target.value)} placeholder="Note title..." style={{ background: "transparent", border: "none", color: C.text, fontSize: 18, fontWeight: 700, outline: "none", flex: 1, fontFamily: "inherit" }} />
-                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                  <Btn size="sm" variant="primary" onClick={saveNote}>Save</Btn>
-                  {activeNote.id !== "new" && <Btn size="sm" variant="danger" onClick={() => deleteNote(activeNote.id)}>Delete</Btn>}
-                  <Btn size="sm" variant="ghost" onClick={() => setActiveNote(null)}>×</Btn>
-                </div>
+          {/* Sidebar */}
+          {!isFullscreen && (
+            <div style={{ width:220, flexShrink:0, borderRight:`1px solid ${C.border}`, display:"flex", flexDirection:"column", background:"#05050e" }}>
+              <div style={{ padding:"10px 12px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <span style={{ fontSize:10, fontWeight:600, letterSpacing:"0.12em", color:C.muted, fontFamily:"'JetBrains Mono',monospace" }}>NOTES</span>
+                <button onClick={newNote} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 2px" }} title="New note">+</button>
               </div>
-              <Input value={noteTags} onChange={e => setNoteTags(e.target.value)} placeholder="#tags separated by space..." style={{ marginBottom: 10, fontSize: 12 }} />
-              <textarea value={noteBody} onChange={e => setNoteBody(e.target.value)} placeholder="Start writing... Use markdown freely." style={{ flex: 1, minHeight: 280, background: "transparent", border: "none", color: C.text, fontSize: 14, lineHeight: 1.8, outline: "none", resize: "vertical", fontFamily: "inherit" }} />
-              {/* Attachments */}
-              <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                  <Btn size="sm" variant="ghost" onClick={() => noteFileRef.current.click()}>+ File / Image</Btn>
-                  <div style={{ display: "flex", gap: 6, flex: 1 }}>
-                    <Input value={urlInput} onChange={e => setUrlInput(e.target.value)} placeholder="Paste URL..." style={{ flex: 1, fontSize: 12 }} onKeyDown={e => e.key === "Enter" && addUrl()} />
-                    <Btn size="sm" onClick={addUrl}>Add URL</Btn>
+              <div style={{ padding:"7px 10px", borderBottom:`1px solid ${C.border}` }}>
+                <input value={noteSearch} onChange={e => setNoteSearch(e.target.value)} placeholder="Search notes..." style={{ width:"100%", background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:4, color:C.text, padding:"5px 8px", fontSize:11, outline:"none", fontFamily:"inherit" }} />
+              </div>
+              <div style={{ flex:1, overflowY:"auto" }}>
+                {filteredNotes.length === 0 && (
+                  <div style={{ padding:"20px 12px", color:C.dim, fontSize:11, textAlign:"center" }}>No notes.<br/><span style={{ color:C.accent, cursor:"pointer" }} onClick={newNote}>Create one</span></div>
+                )}
+                {filteredNotes.map(n => (
+                  <div key={n.id} onClick={() => openNote(n)} style={{ padding:"9px 14px", cursor:"pointer", borderBottom:`1px solid rgba(30,60,120,0.1)`, background:activeNote?.id===n.id?"rgba(74,120,255,0.08)":"transparent", borderLeft:`2px solid ${activeNote?.id===n.id?C.accent:"transparent"}`, transition:"all .1s" }}>
+                    <div style={{ fontSize:12, fontWeight:500, color:activeNote?.id===n.id?C.accent:C.text, marginBottom:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{n.title||"Untitled"}</div>
+                    <div style={{ fontSize:10, color:C.dim, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{n.updated}</div>
+                    {n.tags && <div style={{ fontSize:9, color:C.muted, marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{n.tags}</div>}
+                  </div>
+                ))}
+              </div>
+              <div style={{ padding:"8px 12px", borderTop:`1px solid ${C.border}`, fontSize:10, color:C.dim }}>{notes.length} {notes.length===1?"note":"notes"}</div>
+            </div>
+          )}
+
+          {/* Editor pane */}
+          <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", background:C.surface }}>
+            {activeNote ? (
+              <>
+                {/* Toolbar */}
+                <div style={{ padding:"8px 14px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:8, flexShrink:0, background:"#07071a" }}>
+                  {isFullscreen && <button onClick={() => setIsFullscreen(false)} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:12, fontFamily:"inherit", marginRight:4 }}>← Back</button>}
+                  <input value={noteTitle} onChange={e => setNoteTitle(e.target.value)} placeholder="Untitled" style={{ background:"transparent", border:"none", color:C.text, fontSize:14, fontWeight:600, outline:"none", flex:1, fontFamily:"inherit" }} />
+                  <div style={{ display:"flex", gap:6, flexShrink:0, alignItems:"center" }}>
+                    <button onClick={() => setIsPreview(!isPreview)} style={{ background:isPreview?C.accentGlow:"transparent", border:`1px solid ${isPreview?C.borderHi:C.border}`, color:isPreview?C.accent:C.muted, padding:"3px 10px", borderRadius:3, fontSize:10, cursor:"pointer", fontFamily:"inherit", transition:"all .15s" }}>{isPreview?"Edit":"Preview"}</button>
+                    <button onClick={() => setIsFullscreen(!isFullscreen)} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.muted, padding:"3px 8px", borderRadius:3, fontSize:11, cursor:"pointer" }} title={isFullscreen?"Exit fullscreen":"Fullscreen"}>{isFullscreen?"⊡":"⛶"}</button>
+                    <Btn size="sm" variant="primary" onClick={saveNote}>Save</Btn>
+                    {activeNote.id !== "new" && <Btn size="sm" variant="danger" onClick={() => deleteNote(activeNote.id)}>Delete</Btn>}
+                    {!isFullscreen && <button onClick={() => setActiveNote(null)} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:18, padding:"0 2px" }}>×</button>}
                   </div>
                 </div>
-                <input ref={noteFileRef} type="file" multiple accept="image/*,video/*,.pdf,.txt,.md" style={{ display: "none" }} onChange={handleNoteFile} />
-                {attachments.length > 0 && <AttachmentPreview items={attachments} onRemove={i => setAttachments(a => a.filter((_, idx) => idx !== i))} />}
+                {/* Tags */}
+                <div style={{ padding:"5px 16px", borderBottom:`1px solid ${C.border}`, background:"#07071a", flexShrink:0 }}>
+                  <input value={noteTags} onChange={e => setNoteTags(e.target.value)} placeholder="tags: #work #ideas..." style={{ width:"100%", background:"transparent", border:"none", color:C.muted, fontSize:11, outline:"none", fontFamily:"'JetBrains Mono',monospace" }} />
+                </div>
+                {/* Content */}
+                <div style={{ flex:1, overflow:"auto", padding:"20px 28px" }}>
+                  {isPreview
+                    ? <div className="md-preview" dangerouslySetInnerHTML={{ __html: renderMd(noteBody) }} style={{ maxWidth:720, margin:"0 auto" }} />
+                    : <textarea className="obsidian-editor" value={noteBody} onChange={e => setNoteBody(e.target.value)}
+                        placeholder={"Start writing...\n\n# Heading 1\n## Heading 2\n**bold**  *italic*  `code`\n- list item\n- [ ] checkbox\n> blockquote\n\n---"} style={{ minHeight:"100%", display:"block" }} />
+                  }
+                </div>
+                {/* Attachments */}
+                <div style={{ padding:"8px 14px", borderTop:`1px solid ${C.border}`, background:"#07071a", flexShrink:0 }}>
+                  <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                    <button onClick={() => noteFileRef.current.click()} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.muted, padding:"3px 10px", borderRadius:3, fontSize:10, cursor:"pointer", fontFamily:"inherit" }}>+ File / Image</button>
+                    <input value={urlInput} onChange={e => setUrlInput(e.target.value)} placeholder="Paste URL, press Enter" onKeyDown={e => e.key==="Enter"&&addUrl()} style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:3, color:C.text, padding:"3px 8px", fontSize:11, outline:"none", fontFamily:"inherit", flex:1, minWidth:140 }} />
+                  </div>
+                  <input ref={noteFileRef} type="file" multiple accept="image/*,video/*,.pdf,.txt,.md" style={{ display:"none" }} onChange={handleNoteFile} />
+                  {attachments.length > 0 && <AttachmentPreview items={attachments} onRemove={i => setAttachments(a => a.filter((_,idx) => idx!==i))} />}
+                </div>
+              </>
+            ) : (
+              <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", color:C.dim, gap:12 }}>
+                <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="10" y="8" width="28" height="32" rx="3" stroke={C.dim} strokeWidth="1.5"/><line x1="16" y1="16" x2="32" y2="16" stroke={C.dim} strokeWidth="1.5"/><line x1="16" y1="22" x2="32" y2="22" stroke={C.dim} strokeWidth="1.5"/><line x1="16" y1="28" x2="24" y2="28" stroke={C.dim} strokeWidth="1.5"/></svg>
+                <div style={{ fontSize:13 }}>Select a note or</div>
+                <button onClick={newNote} style={{ background:C.accentGlow, border:`1px solid ${C.borderHi}`, color:C.accent, padding:"7px 20px", borderRadius:4, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>New Note</button>
               </div>
-            </Card>
-          )}
+            )}
+          </div>
         </div>
       )}
 
@@ -845,51 +897,50 @@ const NotesAndJournal = ({ userId }) => {
       {subTab === "journal" && (
         <>
           {journalView === "list" && (
-            <div style={{ maxWidth: 680, margin: "0 auto" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                <div><div style={{ fontSize: 20, fontWeight: 700 }}>Journal</div><div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{posts.length} {posts.length === 1 ? "entry" : "entries"}</div></div>
+            <div style={{ maxWidth:680, margin:"0 auto" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+                <div><div style={{ fontSize:20, fontWeight:700 }}>Journal</div><div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{posts.length} {posts.length===1?"entry":"entries"}</div></div>
                 <Btn variant="primary" onClick={() => { setJTitle(""); setJBody(""); setJMood("Neutral"); setJAttachments([]); setJournalView("write"); }}>+ New Entry</Btn>
               </div>
-              {posts.length > 4 && <Input value={jSearch} onChange={e => setJSearch(e.target.value)} placeholder="Search..." style={{ marginBottom: 14 }} />}
-              {filteredPosts.length === 0 && <Card style={{ textAlign: "center", padding: "40px 20px" }}><div style={{ color: C.dim, fontSize: 13 }}>{posts.length === 0 ? "No entries yet." : "No results"}</div></Card>}
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {posts.length > 4 && <Input value={jSearch} onChange={e => setJSearch(e.target.value)} placeholder="Search..." style={{ marginBottom:14 }} />}
+              {filteredPosts.length === 0 && <Card style={{ textAlign:"center", padding:"40px 20px" }}><div style={{ color:C.dim, fontSize:13 }}>{posts.length===0?"No entries yet.":"No results"}</div></Card>}
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                 {filteredPosts.map(post => (
                   <Card key={post.id} onClick={() => { setActivePost(post); setJournalView("read"); }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}><div style={{ fontSize: 14, fontWeight: 600 }}>{post.title}</div><span onClick={e => { e.stopPropagation(); setPosts(posts.filter(p => p.id !== post.id)); }} style={{ color: C.dim, cursor: "pointer", fontSize: 18, padding: "0 4px" }}>×</span></div>
-                    <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginBottom: 10, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{post.body}</div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 11, color: C.dim }}>{post.date}</span><span style={{ fontSize: 11, color: C.dim }}>{post.wordCount} words · {post.mood}</span></div>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}><div style={{ fontSize:14, fontWeight:600 }}>{post.title}</div><span onClick={e => { e.stopPropagation(); setPosts(posts.filter(p => p.id!==post.id)); }} style={{ color:C.dim, cursor:"pointer", fontSize:18, padding:"0 4px" }}>×</span></div>
+                    <div style={{ fontSize:12, color:C.muted, lineHeight:1.6, marginBottom:10, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>{post.body}</div>
+                    <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ fontSize:11, color:C.dim }}>{post.date}</span><span style={{ fontSize:11, color:C.dim }}>{post.wordCount} words · {post.mood}</span></div>
                   </Card>
                 ))}
               </div>
             </div>
           )}
           {journalView === "write" && (
-            <div style={{ maxWidth: 680, margin: "0 auto" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}><Btn size="sm" variant="ghost" onClick={() => setJournalView("list")}>← Back</Btn></div>
+            <div style={{ maxWidth:680, margin:"0 auto" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:24 }}><Btn size="sm" variant="ghost" onClick={() => setJournalView("list")}>← Back</Btn></div>
               <Card>
-                <input value={jTitle} onChange={e => setJTitle(e.target.value)} placeholder="Title..." style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`, color: C.text, padding: "4px 0 12px", fontSize: 22, fontWeight: 700, outline: "none", marginBottom: 16, fontFamily: "inherit" }} />
-                <div style={{ marginBottom: 14 }}><Label style={{ marginBottom: 8 }}>Mood</Label><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{moods.map(m => <button key={m} onClick={() => setJMood(m)} style={{ padding: "4px 12px", borderRadius: 3, fontSize: 11, cursor: "pointer", fontFamily: "inherit", background: jMood === m ? C.accentGlow : "transparent", border: `1px solid ${jMood === m ? C.borderHi : C.border}`, color: jMood === m ? C.accent : C.muted, transition: "all 0.15s" }}>{m}</button>)}</div></div>
-                <textarea value={jBody} onChange={e => setJBody(e.target.value)} placeholder="What's on your mind..." autoFocus style={{ width: "100%", background: "transparent", border: "none", color: C.text, fontSize: 14, lineHeight: 1.8, outline: "none", resize: "vertical", minHeight: 240, fontFamily: "inherit" }} />
-                {/* Journal attachments */}
-                <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                <input value={jTitle} onChange={e => setJTitle(e.target.value)} placeholder="Title..." style={{ width:"100%", background:"transparent", border:"none", borderBottom:`1px solid ${C.border}`, color:C.text, padding:"4px 0 12px", fontSize:22, fontWeight:700, outline:"none", marginBottom:16, fontFamily:"inherit" }} />
+                <div style={{ marginBottom:14 }}><Label style={{ marginBottom:8 }}>Mood</Label><div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>{moods.map(m => <button key={m} onClick={() => setJMood(m)} style={{ padding:"4px 12px", borderRadius:3, fontSize:11, cursor:"pointer", fontFamily:"inherit", background:jMood===m?C.accentGlow:"transparent", border:`1px solid ${jMood===m?C.borderHi:C.border}`, color:jMood===m?C.accent:C.muted, transition:"all .15s" }}>{m}</button>)}</div></div>
+                <textarea value={jBody} onChange={e => setJBody(e.target.value)} placeholder="What's on your mind..." autoFocus style={{ width:"100%", background:"transparent", border:"none", color:C.text, fontSize:14, lineHeight:1.8, outline:"none", resize:"vertical", minHeight:240, fontFamily:"inherit" }} />
+                <div style={{ marginTop:12, paddingTop:12, borderTop:`1px solid ${C.border}` }}>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:8 }}>
                     <Btn size="sm" variant="ghost" onClick={() => jFileRef.current.click()}>+ Photo / Video / File</Btn>
-                    <div style={{ display: "flex", gap: 6, flex: 1, minWidth: 180 }}>
-                      <Input value={jUrlInput} onChange={e => setJUrlInput(e.target.value)} placeholder="Paste URL..." style={{ flex: 1, fontSize: 12 }} onKeyDown={e => e.key === "Enter" && addJUrl()} />
+                    <div style={{ display:"flex", gap:6, flex:1, minWidth:180 }}>
+                      <Input value={jUrlInput} onChange={e => setJUrlInput(e.target.value)} placeholder="Paste URL..." style={{ flex:1, fontSize:12 }} onKeyDown={e => e.key==="Enter"&&addJUrl()} />
                       <Btn size="sm" onClick={addJUrl}>Add URL</Btn>
                     </div>
                   </div>
-                  <input ref={jFileRef} type="file" multiple accept="image/*,video/*,.pdf,.txt" style={{ display: "none" }} onChange={handleJFile} />
-                  {jAttachments.length > 0 && <AttachmentPreview items={jAttachments} onRemove={i => setJAttachments(a => a.filter((_, idx) => idx !== i))} />}
+                  <input ref={jFileRef} type="file" multiple accept="image/*,video/*,.pdf,.txt" style={{ display:"none" }} onChange={handleJFile} />
+                  {jAttachments.length > 0 && <AttachmentPreview items={jAttachments} onRemove={i => setJAttachments(a => a.filter((_,idx) => idx!==i))} />}
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}` }}><span style={{ fontSize: 12, color: C.dim }}>{jBody.trim() ? jBody.trim().split(/\s+/).length : 0} words</span><Btn variant="primary" onClick={saveJournal} disabled={!jBody.trim()}>Save Entry</Btn></div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:16, paddingTop:14, borderTop:`1px solid ${C.border}` }}><span style={{ fontSize:12, color:C.dim }}>{jBody.trim()?jBody.trim().split(/\s+/).length:0} words</span><Btn variant="primary" onClick={saveJournal} disabled={!jBody.trim()}>Save Entry</Btn></div>
               </Card>
             </div>
           )}
           {journalView === "read" && activePost && (
-            <div style={{ maxWidth: 680, margin: "0 auto" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}><Btn size="sm" variant="ghost" onClick={() => { setJournalView("list"); setActivePost(null); }}>← Back</Btn><Btn size="sm" variant="danger" onClick={() => { setPosts(posts.filter(p => p.id !== activePost.id)); setJournalView("list"); setActivePost(null); }}>Delete</Btn></div>
-              <Card><div style={{ fontSize: 11, color: C.muted, fontFamily: "'JetBrains Mono',monospace", marginBottom: 8 }}>{activePost.date} · {activePost.wordCount} words · {activePost.mood}</div><h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 24 }}>{activePost.title}</h1><div style={{ fontSize: 15, color: "#c0c8e0", lineHeight: 1.9, whiteSpace: "pre-wrap" }}>{activePost.body}</div>{activePost.attachments?.length > 0 && <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}` }}><AttachmentPreview items={activePost.attachments} /></div>}</Card>
+            <div style={{ maxWidth:680, margin:"0 auto" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}><Btn size="sm" variant="ghost" onClick={() => { setJournalView("list"); setActivePost(null); }}>← Back</Btn><Btn size="sm" variant="danger" onClick={() => { setPosts(posts.filter(p => p.id!==activePost.id)); setJournalView("list"); setActivePost(null); }}>Delete</Btn></div>
+              <Card><div style={{ fontSize:11, color:C.muted, fontFamily:"'JetBrains Mono',monospace", marginBottom:8 }}>{activePost.date} · {activePost.wordCount} words · {activePost.mood}</div><h1 style={{ fontSize:24, fontWeight:700, marginBottom:24 }}>{activePost.title}</h1><div style={{ fontSize:15, color:"#c0c8e0", lineHeight:1.9, whiteSpace:"pre-wrap" }}>{activePost.body}</div>{activePost.attachments?.length>0&&<div style={{ marginTop:16, paddingTop:14, borderTop:`1px solid ${C.border}` }}><AttachmentPreview items={activePost.attachments} /></div>}</Card>
             </div>
           )}
         </>
@@ -897,6 +948,7 @@ const NotesAndJournal = ({ userId }) => {
     </div>
   );
 };
+
 
 // ─── FOCUS TIMER ─────────────────────────────────────────────────────────────
 const FocusTimer = ({ userId }) => {
@@ -1168,30 +1220,57 @@ export default function App() {
           <div style={{ height: 52, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ display: "flex", alignItems: "center" }}>
-                <svg width="36" height="22" viewBox="0 0 100 60" style={{ filter: "drop-shadow(0 0 6px rgba(180,200,230,0.6))" }}>
+                <svg width="44" height="30" viewBox="0 0 220 150" style={{ filter: "drop-shadow(0 0 8px rgba(200,160,40,0.7))" }}>
                   <defs>
-                    <linearGradient id="batChrome" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#b0bcd0" />
-                      <stop offset="20%" stopColor="#e0eaf8" />
-                      <stop offset="40%" stopColor="#7090b0" />
-                      <stop offset="60%" stopColor="#d0dff0" />
-                      <stop offset="80%" stopColor="#8090a8" />
-                      <stop offset="100%" stopColor="#c0cfe0" />
+                    <radialGradient id="ovalOut" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stopColor="#c8860a" />
+                      <stop offset="40%" stopColor="#e8a020" />
+                      <stop offset="70%" stopColor="#b06010" />
+                      <stop offset="100%" stopColor="#301000" />
+                    </radialGradient>
+                    <radialGradient id="ovalIn" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stopColor="#d4940e" />
+                      <stop offset="60%" stopColor="#c07808" />
+                      <stop offset="100%" stopColor="#1a0800" />
+                    </radialGradient>
+                    <linearGradient id="ovalShine" x1="20%" y1="10%" x2="80%" y2="60%">
+                      <stop offset="0%" stopColor="rgba(255,220,100,0.55)" />
+                      <stop offset="100%" stopColor="rgba(255,180,20,0)" />
                     </linearGradient>
-                    <linearGradient id="batShine" x1="20%" y1="0%" x2="80%" y2="100%">
-                      <stop offset="0%" stopColor="rgba(255,255,255,0.5)" />
-                      <stop offset="50%" stopColor="rgba(255,255,255,0)" />
-                    </linearGradient>
+                    <clipPath id="innerOval"><ellipse cx="110" cy="75" rx="85" ry="50" /></clipPath>
                   </defs>
-                  <path d="M50 8 C42 8 34 14 28 16 C20 18 10 15 4 20 C10 20 15 22 18 26 C12 28 6 30 4 36 C10 34 16 33 22 35 C18 40 16 46 18 52 C22 46 28 42 34 40 C36 46 38 52 40 56 C42 50 44 44 46 40 C47.5 40 48.5 40 50 40 C51.5 40 52.5 40 54 40 C56 44 58 50 60 56 C62 52 64 46 66 40 C72 42 78 46 82 52 C84 46 82 40 78 35 C84 33 90 34 96 36 C94 30 88 28 82 26 C85 22 90 20 96 20 C90 15 80 18 72 16 C66 14 58 8 50 8Z" fill="url(#batChrome)" />
-                  <path d="M50 8 C42 8 34 14 28 16 C20 18 10 15 4 20 C10 20 15 22 18 26 C12 28 6 30 4 36 C10 34 16 33 22 35 C18 40 16 46 18 52 C22 46 28 42 34 40 C36 46 38 52 40 56 C42 50 44 44 46 40 C47.5 40 48.5 40 50 40 C51.5 40 52.5 40 54 40 C56 44 58 50 60 56 C62 52 64 46 66 40 C72 42 78 46 82 52 C84 46 82 40 78 35 C84 33 90 34 96 36 C94 30 88 28 82 26 C85 22 90 20 96 20 C90 15 80 18 72 16 C66 14 58 8 50 8Z" fill="url(#batShine)" />
+                  {/* Outer oval border */}
+                  <ellipse cx="110" cy="75" rx="108" ry="68" fill="url(#ovalOut)" />
+                  {/* Black ring */}
+                  <ellipse cx="110" cy="75" rx="98" ry="60" fill="#0a0500" />
+                  {/* Inner gold oval */}
+                  <ellipse cx="110" cy="75" rx="85" ry="50" fill="url(#ovalIn)" />
+                  {/* Bat silhouette — black on gold */}
+                  <g clipPath="url(#innerOval)" fill="#050200">
+                    {/* Body */}
+                    <ellipse cx="110" cy="82" rx="18" ry="22" />
+                    {/* Head / ears */}
+                    <polygon points="110,30 103,52 117,52" />
+                    <polygon points="98,36 88,52 108,52" />
+                    <polygon points="122,36 112,52 132,52" />
+                    {/* Left wing */}
+                    <path d="M92 68 C75 55 45 48 25 60 C35 60 45 64 50 70 C38 68 28 72 22 80 C34 76 46 75 55 78 C48 82 42 90 44 100 C50 92 58 86 68 82 C72 88 74 96 74 104 C76 96 78 88 82 82 C88 86 92 90 92 96 Z" />
+                    {/* Right wing */}
+                    <path d="M128 68 C145 55 175 48 195 60 C185 60 175 64 170 70 C182 68 192 72 198 80 C186 76 174 75 165 78 C172 82 178 90 176 100 C170 92 162 86 152 82 C148 88 146 96 146 104 C144 96 142 88 138 82 C132 86 128 90 128 96 Z" />
+                    {/* Bottom notch */}
+                    <path d="M102 104 C105 96 110 92 110 92 C110 92 115 96 118 104 C115 100 110 98 110 98 C110 98 105 100 102 104 Z" fill="#c07808" />
+                  </g>
+                  {/* Shine overlay */}
+                  <ellipse cx="110" cy="75" rx="85" ry="50" fill="url(#ovalShine)" />
+                  {/* Edge glint */}
+                  <ellipse cx="110" cy="75" rx="108" ry="68" fill="none" stroke="rgba(255,220,80,0.3)" strokeWidth="2" />
                 </svg>
               </div>
               <div><div style={{ fontSize: 10, letterSpacing: "0.12em", color: C.muted, fontFamily: "'JetBrains Mono',monospace" }}>{getGreeting()},</div><div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.1em", background: C.chrome, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>VINCE</div></div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <FortuneCookie />
-              {isEve && <Btn size="sm" variant="primary" onClick={() => setShowReport(true)}>Report</Btn>}
+              <Btn size="sm" variant="primary" onClick={() => setShowReport(true)}>Report</Btn>
               <Btn size="sm" variant="ghost" onClick={logout}>Exit</Btn>
             </div>
           </div>
