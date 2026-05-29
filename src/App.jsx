@@ -143,11 +143,13 @@ const useSynced = (key, init, userId) => {
   }, [userId, key]);
 
   const save = useCallback((v) => {
-    const newVal = typeof v === "function" ? v(val) : v;
-    setValRaw(newVal);
-    localStorage.setItem(lsKey, JSON.stringify(newVal));
-    if (userId) dbSave("user_data", userId, key, newVal);
-  }, [userId, key, val]);
+    setValRaw(prev => {
+      const newVal = typeof v === "function" ? v(prev) : v;
+      localStorage.setItem(lsKey, JSON.stringify(newVal));
+      if (userId) dbSave("user_data", userId, key, newVal);
+      return newVal;
+    });
+  }, [userId, key, lsKey]);
 
   return [val, save];
 };
@@ -155,12 +157,14 @@ const useSynced = (key, init, userId) => {
 // ─── AI ───────────────────────────────────────────────────────────────────────
 const callAI = async (prompt, system = "") => {
   try {
+    if (!GEMINI_KEY) return "[AI unavailable: no API key set]";
     const body = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
     if (system) body.systemInstruction = { parts: [{ text: system }] };
     const res = await fetch(GEMINI_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const data = await res.json();
-    return data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
-  } catch { return ""; }
+    if (data.error) return `[AI error: ${data.error.message || "unknown error"}]`;
+    return data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "[No response from AI]";
+  } catch (e) { return `[AI request failed: ${e.message}]`; }
 };
 
 const callAIVision = async (base64, mimeType, prompt) => {
@@ -1026,29 +1030,106 @@ const Bible = ({ userId }) => {
 // ─── EVENING REPORT ───────────────────────────────────────────────────────────
 const EveningReport = ({ onClose, userId }) => {
   const [report, setReport] = useState(""); const [loading, setLoading] = useState(true);
+  const [saved, setSaved] = useState(false);
   const [water] = useSynced(`water_${todayKey()}`, 0, userId);
   const [calories] = useSynced(`calories_${todayKey()}`, [], userId);
   const [todos] = useSynced("todos", [], userId);
   const [plans] = useSynced("workout_plans", [], userId);
+  const [notes] = useSynced("obsidian_notes", [], userId);
+  const [archive, setArchive] = useSynced("report_archive", [], userId);
+
   useEffect(() => {
     (async () => {
       const cal = calories.reduce((s, e) => s + (e.cal || 0), 0);
-      const tasksDone = todos.filter(t => t.done).length;
+      const tasksDone = todos.filter(t => t.done);
+      const tasksTotal = todos.length;
       const gymDone = plans.reduce((s, p) => s + p.exercises.filter(e => e.done).length, 0);
       const gymTotal = plans.reduce((s, p) => s + p.exercises.length, 0);
-      const res = await callAI(`Vince's day:\nWater: ${water}/8 cups\nCalories: ${cal} kcal\nTasks: ${tasksDone}/${todos.length}\nWorkout: ${gymDone}/${gymTotal}\n\nWrite a short honest daily recap. 3-4 sentences. Acknowledge wins, note slips gently, give one nudge for tomorrow. Warm and direct.`, "Personal AI companion. Brief and warm.");
-      setReport(res); setLoading(false);
+      const todayNotes = notes.filter(n => n.updated === new Date().toLocaleDateString()).map(n => n.title).join(", ");
+      const calItems = calories.map(e => `${e.name} (${e.cal}kcal)`).join(", ");
+      const doneTasksList = tasksDone.map(t => t.text).join(", ");
+
+      const prompt = `Write Vince's end-of-day report. Be warm, direct, and specific — mention exactly what was accomplished.
+
+TODAY'S DATA:
+- Water: ${water}/8 cups
+- Calories consumed: ${cal} kcal (items: ${calItems || "none logged"})
+- Tasks completed: ${tasksDone.length}/${tasksTotal}${doneTasksList ? ` — specifically: ${doneTasksList}` : ""}
+- Workout: ${gymDone}/${gymTotal} exercises done
+- Notes written today: ${todayNotes || "none"}
+
+Write a 4-5 sentence report that:
+1. Summarizes what was actually completed today (be specific, name the tasks/food/exercises)
+2. Notes any areas that were light
+3. Ends with one clear, actionable nudge for tomorrow
+
+Keep it personal, direct, and honest. No fluff.`;
+
+      const res = await callAI(prompt, "Personal AI companion for Vince. Brief, warm, specific. Reference actual data provided.");
+      setReport(res);
+      setLoading(false);
     })();
   }, []);
+
+  const saveToArchive = () => {
+    const dateLabel = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    const entry = { id: Date.now(), date: dateLabel, dateKey: todayKey(), report, savedAt: new Date().toISOString() };
+    setArchive([entry, ...archive.filter(a => a.dateKey !== todayKey())]);
+    setSaved(true);
+  };
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.95)", backdropFilter: "blur(12px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }} className="fade-in">
-      <div style={{ width: "100%", maxWidth: 420 }}>
+      <div style={{ width: "100%", maxWidth: 480 }}>
         <Card style={{ boxShadow: `0 0 40px ${C.blueGlow}` }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><Label style={{ marginBottom: 0 }}>End of Day</Label><span onClick={onClose} style={{ color: C.muted, cursor: "pointer", fontSize: 20 }}>×</span></div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><Label style={{ marginBottom: 0 }}>End of Day Report</Label><span onClick={onClose} style={{ color: C.muted, cursor: "pointer", fontSize: 20 }}>×</span></div>
           <div style={{ fontSize: 11, color: C.dim, fontFamily: "'JetBrains Mono',monospace", marginBottom: 14 }}>{new Date().toDateString().toUpperCase()}</div>
-          {loading ? <div style={{ display: "flex", alignItems: "center", gap: 10, color: C.muted, fontSize: 13 }}><Spinner /> Generating...</div> : <div style={{ fontSize: 14, color: "#c0c8e0", lineHeight: 1.8 }}>{report}</div>}
-          <div style={{ marginTop: 18 }}><Btn onClick={onClose}>Close</Btn></div>
+          {loading ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, color: C.muted, fontSize: 13 }}><Spinner /> Generating your daily recap...</div>
+          ) : (
+            <div style={{ fontSize: 14, color: "#c0c8e0", lineHeight: 1.9, whiteSpace: "pre-wrap" }}>{report}</div>
+          )}
+          <div style={{ marginTop: 18, display: "flex", gap: 8 }}>
+            {!loading && !saved && <Btn variant="primary" onClick={saveToArchive}>Save to Archive</Btn>}
+            {saved && <div style={{ fontSize: 12, color: "#50c878", display: "flex", alignItems: "center", gap: 6 }}><svg width="12" height="12" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5 3.5-4" stroke="#50c878" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>Saved to Archive</div>}
+            <Btn onClick={onClose}>Close</Btn>
+          </div>
         </Card>
+      </div>
+    </div>
+  );
+};
+
+// ─── REPORT ARCHIVE ──────────────────────────────────────────────────────────
+const ReportArchive = ({ userId }) => {
+  const [archive] = useSynced("report_archive", [], userId);
+  const [expanded, setExpanded] = useState(null);
+  return (
+    <div className="fade-up">
+      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Report Archive</div>
+      <div style={{ fontSize: 12, color: C.muted, marginBottom: 20 }}>{archive.length} saved {archive.length === 1 ? "report" : "reports"}</div>
+      {archive.length === 0 && (
+        <Card style={{ textAlign: "center", padding: "40px 20px" }}>
+          <div style={{ color: C.dim, fontSize: 13 }}>No reports yet. Generate your first End of Day Report tonight.</div>
+        </Card>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {archive.map(entry => (
+          <Card key={entry.id} onClick={() => setExpanded(expanded === entry.id ? null : entry.id)} style={{ cursor: "pointer" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{entry.date}</div>
+                {expanded !== entry.id && <div style={{ fontSize: 12, color: C.muted, display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{entry.report}</div>}
+              </div>
+              <div style={{ color: C.muted, fontSize: 16, marginLeft: 12 }}>{expanded === entry.id ? "−" : "+"}</div>
+            </div>
+            {expanded === entry.id && (
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}`, fontSize: 14, color: "#c0c8e0", lineHeight: 1.9, whiteSpace: "pre-wrap" }} onClick={e => e.stopPropagation()}>
+                {entry.report}
+              </div>
+            )}
+          </Card>
+        ))}
       </div>
     </div>
   );
@@ -1073,6 +1154,7 @@ export default function App() {
     { id: "focus", label: "Focus" },
     { id: "bible", label: "Bible" },
     { id: "notes", label: "Notes" },
+    { id: "archive", label: "Archive" },
   ];
 
   return (
@@ -1085,7 +1167,26 @@ export default function App() {
         <div style={{ maxWidth: 960, margin: "0 auto", padding: "0 20px" }}>
           <div style={{ height: 52, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ display: "flex", gap: 4 }}>{[C.blue, "#6090ff", C.silver, C.muted].map((c,i) => <div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: c, opacity: 0.7 }} />)}</div>
+              <div style={{ display: "flex", alignItems: "center" }}>
+                <svg width="36" height="22" viewBox="0 0 100 60" style={{ filter: "drop-shadow(0 0 6px rgba(180,200,230,0.6))" }}>
+                  <defs>
+                    <linearGradient id="batChrome" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#b0bcd0" />
+                      <stop offset="20%" stopColor="#e0eaf8" />
+                      <stop offset="40%" stopColor="#7090b0" />
+                      <stop offset="60%" stopColor="#d0dff0" />
+                      <stop offset="80%" stopColor="#8090a8" />
+                      <stop offset="100%" stopColor="#c0cfe0" />
+                    </linearGradient>
+                    <linearGradient id="batShine" x1="20%" y1="0%" x2="80%" y2="100%">
+                      <stop offset="0%" stopColor="rgba(255,255,255,0.5)" />
+                      <stop offset="50%" stopColor="rgba(255,255,255,0)" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M50 8 C42 8 34 14 28 16 C20 18 10 15 4 20 C10 20 15 22 18 26 C12 28 6 30 4 36 C10 34 16 33 22 35 C18 40 16 46 18 52 C22 46 28 42 34 40 C36 46 38 52 40 56 C42 50 44 44 46 40 C47.5 40 48.5 40 50 40 C51.5 40 52.5 40 54 40 C56 44 58 50 60 56 C62 52 64 46 66 40 C72 42 78 46 82 52 C84 46 82 40 78 35 C84 33 90 34 96 36 C94 30 88 28 82 26 C85 22 90 20 96 20 C90 15 80 18 72 16 C66 14 58 8 50 8Z" fill="url(#batChrome)" />
+                  <path d="M50 8 C42 8 34 14 28 16 C20 18 10 15 4 20 C10 20 15 22 18 26 C12 28 6 30 4 36 C10 34 16 33 22 35 C18 40 16 46 18 52 C22 46 28 42 34 40 C36 46 38 52 40 56 C42 50 44 44 46 40 C47.5 40 48.5 40 50 40 C51.5 40 52.5 40 54 40 C56 44 58 50 60 56 C62 52 64 46 66 40 C72 42 78 46 82 52 C84 46 82 40 78 35 C84 33 90 34 96 36 C94 30 88 28 82 26 C85 22 90 20 96 20 C90 15 80 18 72 16 C66 14 58 8 50 8Z" fill="url(#batShine)" />
+                </svg>
+              </div>
               <div><div style={{ fontSize: 10, letterSpacing: "0.12em", color: C.muted, fontFamily: "'JetBrains Mono',monospace" }}>{getGreeting()},</div><div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.1em", background: C.chrome, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>VINCE</div></div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1110,6 +1211,7 @@ export default function App() {
         {tab === "focus" && <FocusTimer userId={user.id} />}
         {tab === "bible" && <Bible userId={user.id} />}
         {tab === "notes" && <NotesAndJournal userId={user.id} />}
+        {tab === "archive" && <ReportArchive userId={user.id} />}
       </main>
 
       {/* Mobile bottom nav — scrollable, larger tap targets */}
