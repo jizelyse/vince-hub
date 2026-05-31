@@ -653,40 +653,61 @@ const GoalTracker = ({ userId }) => {
 // ─── LOGS ─────────────────────────────────────────────────────────────────────
 const LogBox = ({ logKey, title, onDelete, userId }) => {
   const [entries, setEntries] = useSynced(`log_${logKey}`, [], userId);
+  const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ title: "", comment: "", rating: 0, poster: "" });
   const fileRef = useRef();
   const handleFile = e => { const file = e.target.files[0]; if (!file) return; const r = new FileReader(); r.onload = ev => setDraft(d => ({ ...d, poster: ev.target.result })); r.readAsDataURL(file); };
   const save = () => { if (!draft.title.trim()) return; setEntries([{ ...draft, id: Date.now(), date: new Date().toLocaleDateString() }, ...entries]); setDraft({ title: "", comment: "", rating: 0, poster: "" }); setAdding(false); };
   return (
-    <Card style={{ marginBottom: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <Label style={{ marginBottom: 0 }}>{title}</Label>
-        <div style={{ display: "flex", gap: 8 }}><Btn size="sm" onClick={() => setAdding(!adding)}>{adding ? "Cancel" : "+ Add"}</Btn>{onDelete && <Btn size="sm" variant="danger" onClick={onDelete}>Delete Log</Btn>}</div>
+    <div style={{ marginBottom: 10, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", background: C.surface }}>
+      {/* Accordion header — always visible, click to expand */}
+      <div onClick={() => setOpen(o => !o)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", cursor: "pointer", userSelect: "none", transition: "background 0.15s" }}
+        onMouseEnter={e => e.currentTarget.style.background = C.surface2}
+        onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{title}</div>
+          <div style={{ fontSize: 10, color: C.muted, background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "2px 8px", fontFamily: "'JetBrains Mono',monospace" }}>{entries.length}</div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {onDelete && <span onClick={e => { e.stopPropagation(); if (window.confirm("Delete this log?")) onDelete(); }} style={{ fontSize: 10, color: "#f08080", cursor: "pointer" }}>Delete</span>}
+          <svg width="14" height="14" viewBox="0 0 14 14" style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", color: C.muted }}>
+            <path d="M2 4l5 5 5-5" stroke={C.muted} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
       </div>
-      {adding && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14, padding: 14, background: C.surface2, borderRadius: 8, border: `1px solid ${C.border}` }}>
-          <div onClick={() => fileRef.current.click()} style={{ width: "100%", height: 90, border: `2px dashed ${C.border}`, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", overflow: "hidden", background: C.surface }}>
-            {draft.poster ? <img src={draft.poster} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: C.muted, fontSize: 12 }}>Upload poster / cover</span>}
+
+      {/* Expanded content */}
+      {open && (
+        <div style={{ borderTop: `1px solid ${C.border}`, padding: "14px 18px" }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+            <Btn size="sm" variant="primary" onClick={() => setAdding(!adding)}>{adding ? "Cancel" : "+ Add"}</Btn>
           </div>
-          <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
-          <Input value={draft.title} onChange={e => setDraft(d => ({ ...d, title: e.target.value }))} placeholder="Title..." />
-          <Input value={draft.comment} onChange={e => setDraft(d => ({ ...d, comment: e.target.value }))} placeholder="Your thoughts..." multiline rows={2} />
-          <div style={{ display: "flex", gap: 4 }}>{[1,2,3,4,5].map(s => <div key={s} onClick={() => setDraft(d => ({ ...d, rating: s }))} style={{ cursor: "pointer" }}><svg width="16" height="16" viewBox="0 0 24 24" fill={s <= draft.rating ? C.silver : "none"} stroke={s <= draft.rating ? C.silver : C.muted} strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg></div>)}</div>
-          <Btn variant="primary" onClick={save}>Save</Btn>
+          {adding && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14, padding: 14, background: C.surface2, borderRadius: 8, border: `1px solid ${C.border}` }}>
+              <div onClick={() => fileRef.current.click()} style={{ width: "100%", height: 90, border: `2px dashed ${C.border}`, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", overflow: "hidden", background: C.surface }}>
+                {draft.poster ? <img src={draft.poster} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: C.muted, fontSize: 12 }}>Upload poster / cover</span>}
+              </div>
+              <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
+              <Input value={draft.title} onChange={e => setDraft(d => ({ ...d, title: e.target.value }))} placeholder="Title..." />
+              <Input value={draft.comment} onChange={e => setDraft(d => ({ ...d, comment: e.target.value }))} placeholder="Your thoughts..." multiline rows={2} />
+              <div style={{ display: "flex", gap: 4 }}>{[1,2,3,4,5].map(s => <div key={s} onClick={() => setDraft(d => ({ ...d, rating: s }))} style={{ cursor: "pointer" }}><svg width="16" height="16" viewBox="0 0 24 24" fill={s <= draft.rating ? C.silver : "none"} stroke={s <= draft.rating ? C.silver : C.muted} strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg></div>)}</div>
+              <Btn variant="primary" onClick={save}>Save</Btn>
+            </div>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {entries.map(e => (
+              <div key={e.id} style={{ display: "flex", gap: 10, padding: 12, background: C.surface2, borderRadius: 8, border: `1px solid ${C.border}` }}>
+                {e.poster && <img src={e.poster} alt="" style={{ width: 42, height: 60, objectFit: "cover", borderRadius: 4, flexShrink: 0, border: `1px solid ${C.border}` }} />}
+                <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{e.title}</div><div style={{ display: "flex", gap: 2, marginBottom: 4 }}>{[1,2,3,4,5].map(s => <svg key={s} width="10" height="10" viewBox="0 0 24 24" fill={s <= e.rating ? C.silver : "none"} stroke={s <= e.rating ? C.silver : C.dim} strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>)}</div>{e.comment && <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>{e.comment}</div>}<div style={{ fontSize: 10, color: C.dim, marginTop: 4 }}>{e.date}</div></div>
+                <span onClick={() => setEntries(entries.filter(x => x.id !== e.id))} style={{ color: C.dim, cursor: "pointer", alignSelf: "flex-start", fontSize: 16 }}>×</span>
+              </div>
+            ))}
+            {entries.length === 0 && <div style={{ color: C.dim, fontSize: 12, textAlign: "center", padding: 14 }}>Nothing logged yet</div>}
+          </div>
         </div>
       )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 300, overflowY: "auto" }}>
-        {entries.map(e => (
-          <div key={e.id} style={{ display: "flex", gap: 10, padding: 12, background: C.surface2, borderRadius: 8, border: `1px solid ${C.border}` }}>
-            {e.poster && <img src={e.poster} alt="" style={{ width: 42, height: 60, objectFit: "cover", borderRadius: 4, flexShrink: 0, border: `1px solid ${C.border}` }} />}
-            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{e.title}</div><div style={{ display: "flex", gap: 2, marginBottom: 4 }}>{[1,2,3,4,5].map(s => <svg key={s} width="10" height="10" viewBox="0 0 24 24" fill={s <= e.rating ? C.silver : "none"} stroke={s <= e.rating ? C.silver : C.dim} strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>)}</div>{e.comment && <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>{e.comment}</div>}<div style={{ fontSize: 10, color: C.dim, marginTop: 4 }}>{e.date}</div></div>
-            <span onClick={() => setEntries(entries.filter(x => x.id !== e.id))} style={{ color: C.dim, cursor: "pointer", alignSelf: "flex-start", fontSize: 16 }}>×</span>
-          </div>
-        ))}
-        {entries.length === 0 && <div style={{ color: C.dim, fontSize: 12, textAlign: "center", padding: 14 }}>Nothing logged yet</div>}
-      </div>
-    </Card>
+    </div>
   );
 };
 
@@ -694,7 +715,7 @@ const Logs = ({ userId }) => {
   const [logDefs, setLogDefs] = useSynced("log_definitions", [{ key: "film", title: "Film Log" }, { key: "book", title: "Book & Manga Log" }], userId);
   const [newName, setNewName] = useState(""); const [adding, setAdding] = useState(false);
   const addLog = () => { if (!newName.trim()) return; setLogDefs([...logDefs, { key: `custom_${Date.now()}`, title: newName.trim() }]); setNewName(""); setAdding(false); };
-  const deleteLog = key => { if (!window.confirm("Delete this log?")) return; setLogDefs(logDefs.filter(l => l.key !== key)); };
+  const deleteLog = key => setLogDefs(logDefs.filter(l => l.key !== key));
   return (
     <div className="fade-up">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}><div style={{ fontSize: 20, fontWeight: 700 }}>Logs</div><Btn size="sm" variant="primary" onClick={() => setAdding(!adding)}>{adding ? "Cancel" : "+ New Log"}</Btn></div>
@@ -704,20 +725,24 @@ const Logs = ({ userId }) => {
   );
 };
 
-// ─── OBSIDIAN-STYLE NOTES + JOURNAL (combined tab) ────────────────────────────
+// ─── OBSIDIAN NOTES + JOURNAL ────────────────────────────────────────────────
 const NotesAndJournal = ({ userId }) => {
   const [subTab, setSubTab] = useState("notes");
   const [notes, setNotes] = useSynced("obsidian_notes", [], userId);
   const [activeNote, setActiveNote] = useState(null);
   const [noteTitle, setNoteTitle] = useState("");
-  const [noteBody, setNoteBody] = useState("");
+  const [noteBlocks, setNoteBlocks] = useState([]); // rich blocks: {id, type:"text"|"image"|"url"|"video", content, data}
   const [noteTags, setNoteTags] = useState("");
   const [noteSearch, setNoteSearch] = useState("");
-  const [attachments, setAttachments] = useState([]);
   const [isPreview, setIsPreview] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [noteFont, setNoteFont] = useSynced("note_font", { family:"'JetBrains Mono',monospace", size:14, lineH:1.85, spacing:0 }, userId);
   const noteFileRef = useRef();
-  const [urlInput, setUrlInput] = useState("");
+  const [insertAfter, setInsertAfter] = useState(null); // block id to insert after
+  const [urlDraft, setUrlDraft] = useState("");
+
+  // Journal
   const [posts, setPosts] = useSynced("journal_posts", [], userId);
   const [journalView, setJournalView] = useState("list");
   const [activePost, setActivePost] = useState(null);
@@ -725,31 +750,67 @@ const NotesAndJournal = ({ userId }) => {
   const [jAttachments, setJAttachments] = useState([]);
   const jFileRef = useRef();
   const [jUrlInput, setJUrlInput] = useState("");
-  const moods = ["Neutral", "Good", "Great", "Rough", "Motivated", "Tired", "Reflective"];
+  const moods = ["Neutral","Good","Great","Rough","Motivated","Tired","Reflective"];
 
-  const openNote = (note) => { setActiveNote(note); setNoteTitle(note.title); setNoteBody(note.body); setNoteTags(note.tags || ""); setAttachments(note.attachments || []); setIsPreview(false); };
+  // ── block helpers ──
+  const mkBlock = (type, content="", data="") => ({ id: Date.now()+Math.random(), type, content, data });
+
+  const openNote = (note) => {
+    setActiveNote(note);
+    setNoteTitle(note.title || "");
+    setNoteTags(note.tags || "");
+    setIsPreview(false);
+    // support legacy notes that stored body as string
+    if (Array.isArray(note.blocks)) setNoteBlocks(note.blocks);
+    else setNoteBlocks([mkBlock("text", note.body || "")]);
+  };
+
   const saveNote = () => {
-    const updated = { ...activeNote, title: noteTitle || "Untitled", body: noteBody, tags: noteTags, attachments, updated: new Date().toLocaleDateString() };
-    if (activeNote.id === "new") { const n = { ...updated, id: Date.now(), created: new Date().toLocaleDateString() }; setNotes([n, ...notes]); setActiveNote(n); }
-    else setNotes(notes.map(n => n.id === activeNote.id ? updated : n));
+    const updated = { ...activeNote, title: noteTitle||"Untitled", blocks: noteBlocks, body: noteBlocks.filter(b=>b.type==="text").map(b=>b.content).join("\n\n"), tags: noteTags, updated: new Date().toLocaleDateString() };
+    if (activeNote.id === "new") { const n={...updated,id:Date.now(),created:new Date().toLocaleDateString()}; setNotes([n,...notes]); setActiveNote(n); }
+    else setNotes(notes.map(n => n.id===activeNote.id ? updated : n));
   };
-  const newNote = () => openNote({ id: "new", title: "", body: "", tags: "", attachments: [], created: new Date().toLocaleDateString(), updated: new Date().toLocaleDateString() });
-  const deleteNote = id => { setNotes(notes.filter(n => n.id !== id)); setActiveNote(null); };
-  const handleNoteFile = e => { Array.from(e.target.files).forEach(file => { if (file.type.startsWith("image/")) { const r = new FileReader(); r.onload = ev => setAttachments(a => [...a, { type: "image", name: file.name, data: ev.target.result }]); r.readAsDataURL(file); } else setAttachments(a => [...a, { type: "file", name: file.name }]); }); };
-  const addUrl = () => { if (!urlInput.trim()) return; setAttachments(a => [...a, { type: "url", name: urlInput.trim(), data: urlInput.trim() }]); setUrlInput(""); };
-  const handleJFile = e => { Array.from(e.target.files).forEach(file => { if (file.type.startsWith("image/") || file.type.startsWith("video/")) { const r = new FileReader(); r.onload = ev => setJAttachments(a => [...a, { type: file.type.startsWith("video/") ? "video" : "image", name: file.name, data: ev.target.result }]); r.readAsDataURL(file); } else setJAttachments(a => [...a, { type: "file", name: file.name }]); }); };
-  const addJUrl = () => { if (!jUrlInput.trim()) return; setJAttachments(a => [...a, { type: "url", name: jUrlInput.trim(), data: jUrlInput.trim() }]); setJUrlInput(""); };
-  const saveJournal = () => {
-    if (!jBody.trim()) return;
-    const post = { id: Date.now(), title: jTitle.trim() || new Date().toLocaleDateString("en-US", { month: "long", day: "numeric" }), body: jBody.trim(), mood: jMood, date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }), wordCount: jBody.trim().split(/\s+/).length, attachments: jAttachments };
-    setPosts([post, ...posts]); setJTitle(""); setJBody(""); setJMood("Neutral"); setJAttachments([]); setJournalView("list");
+  const newNote = () => openNote({ id:"new", title:"", blocks:[mkBlock("text","")], tags:"", created:new Date().toLocaleDateString(), updated:new Date().toLocaleDateString() });
+  const deleteNote = id => { setNotes(notes.filter(n=>n.id!==id)); setActiveNote(null); };
+
+  const updateBlock = (id, field, val) => setNoteBlocks(bs => bs.map(b => b.id===id ? {...b,[field]:val} : b));
+  const deleteBlock = id => setNoteBlocks(bs => bs.filter(b=>b.id!==id));
+  const addBlockAfter = (afterId, block) => setNoteBlocks(bs => {
+    const i = bs.findIndex(b=>b.id===afterId);
+    const next = [...bs]; next.splice(i+1,0,block); return next;
+  });
+  const addBlockAtEnd = (block) => setNoteBlocks(bs => [...bs, block]);
+
+  const insertMedia = (afterId, type, data, name="") => {
+    const block = mkBlock(type, name, data);
+    if (afterId != null) addBlockAfter(afterId, block);
+    else addBlockAtEnd(block);
   };
 
-  const filteredNotes = notes.filter(n => n.title?.toLowerCase().includes(noteSearch.toLowerCase()) || n.body?.toLowerCase().includes(noteSearch.toLowerCase()) || n.tags?.toLowerCase().includes(noteSearch.toLowerCase()));
-  const filteredPosts = posts.filter(p => p.title?.toLowerCase().includes(jSearch.toLowerCase()) || p.body?.toLowerCase().includes(jSearch.toLowerCase()));
+  const handleNoteFile = (e, afterId) => {
+    Array.from(e.target.files).forEach(file => {
+      const r = new FileReader();
+      if (file.type.startsWith("image/")) { r.onload = ev => insertMedia(afterId,"image",ev.target.result,file.name); r.readAsDataURL(file); }
+      else if (file.type.startsWith("video/")) { r.onload = ev => insertMedia(afterId,"video",ev.target.result,file.name); r.readAsDataURL(file); }
+    });
+    e.target.value = "";
+  };
 
+  const insertUrl = (afterId) => {
+    if (!urlDraft.trim()) return;
+    const u = urlDraft.trim();
+    const isYT = /youtu(be\.com|\.be)/.test(u);
+    const isVimeo = /vimeo\.com/.test(u);
+    const isImg = /\.(png|jpg|jpeg|gif|webp|svg)(\?|$)/i.test(u);
+    const type = (isYT||isVimeo) ? "video" : isImg ? "image" : "url";
+    insertMedia(afterId, type, u, u);
+    setUrlDraft("");
+    setInsertAfter(null);
+  };
+
+  // ── markdown renderer (for preview) ──
   const renderMd = (text) => {
-    if (!text) return "<p style='color:#4a5080;font-style:italic'>Nothing to preview yet.</p>";
+    if (!text) return "";
     return text
       .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
       .replace(/^######\s+(.+)$/gm,"<h6>$1</h6>").replace(/^#####\s+(.+)$/gm,"<h5>$1</h5>")
@@ -762,34 +823,46 @@ const NotesAndJournal = ({ userId }) => {
       .replace(/^-{3,}$/gm,"<hr/>").replace(/^>\s+(.+)$/gm,"<blockquote>$1</blockquote>")
       .replace(/^-\s+\[x\]\s+(.+)$/gm,'<div class="cb"><input type="checkbox" checked disabled/> $1</div>')
       .replace(/^-\s+\[\s?\]\s+(.+)$/gm,'<div class="cb"><input type="checkbox" disabled/> $1</div>')
-      .replace(/^[-*]\s+(.+)$/gm,"<li>$1</li>").replace(/\[(.+?)\]\((.+?)\)/g,'<a href="$2" target="_blank">$1</a>')
-      .replace(/\n\n+/g,"</p><p>").replace(/^([^<].+)$/gm,"$1");
+      .replace(/^[-*]\s+(.+)$/gm,"<li>$1</li>")
+      .replace(/\[(.+?)\]\((.+?)\)/g,'<a href="$2" target="_blank">$1</a>')
+      .replace(/\n\n+/g,"</p><p>");
   };
 
-  const AttachmentPreview = ({ items, onRemove }) => (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-      {items.map((a, i) => (
-        <div key={i} style={{ position: "relative", background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 6, overflow: "hidden" }}>
-          {a.type === "image" && <img src={a.data} alt={a.name} style={{ width: 80, height: 60, objectFit: "cover", display: "block" }} />}
-          {a.type === "video" && <video src={a.data} style={{ width: 80, height: 60, objectFit: "cover", display: "block" }} />}
-          {a.type === "url" && <a href={a.data} target="_blank" rel="noopener noreferrer" style={{ display: "block", padding: "6px 10px", fontSize: 11, color: C.accent, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</a>}
-          {a.type === "file" && <div style={{ padding: "6px 10px", fontSize: 11, color: C.muted, maxWidth: 120 }}>{a.name}</div>}
-          {onRemove && <div onClick={() => onRemove(i)} style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,0.7)", color: "#fff", borderRadius: "50%", width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 10 }}>×</div>}
-        </div>
-      ))}
-    </div>
-  );
+  const getYTEmbed = (url) => {
+    const m = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    return m ? `https://www.youtube.com/embed/${m[1]}` : null;
+  };
+  const getVimeoEmbed = (url) => {
+    const m = url.match(/vimeo\.com\/(\d+)/);
+    return m ? `https://player.vimeo.com/video/${m[1]}` : null;
+  };
+
+  const filteredNotes = notes.filter(n => n.title?.toLowerCase().includes(noteSearch.toLowerCase()) || n.body?.toLowerCase().includes(noteSearch.toLowerCase()) || n.tags?.toLowerCase().includes(noteSearch.toLowerCase()));
+  const filteredPosts = posts.filter(p => p.title?.toLowerCase().includes(jSearch.toLowerCase()) || p.body?.toLowerCase().includes(jSearch.toLowerCase()));
+
+  const handleJFile = e => { Array.from(e.target.files).forEach(file => { if (file.type.startsWith("image/")||file.type.startsWith("video/")) { const r=new FileReader(); r.onload=ev=>setJAttachments(a=>[...a,{type:file.type.startsWith("video/")?"video":"image",name:file.name,data:ev.target.result}]); r.readAsDataURL(file); } else setJAttachments(a=>[...a,{type:"file",name:file.name}]); }); };
+  const addJUrl = () => { if (!jUrlInput.trim()) return; setJAttachments(a=>[...a,{type:"url",name:jUrlInput.trim(),data:jUrlInput.trim()}]); setJUrlInput(""); };
+  const saveJournal = () => {
+    if (!jBody.trim()) return;
+    const post = { id:Date.now(), title:jTitle.trim()||new Date().toLocaleDateString("en-US",{month:"long",day:"numeric"}), body:jBody.trim(), mood:jMood, date:new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"}), wordCount:jBody.trim().split(/\s+/).length, attachments:jAttachments };
+    setPosts([post,...posts]); setJTitle(""); setJBody(""); setJMood("Neutral"); setJAttachments([]); setJournalView("list");
+  };
+
+  const fontFamilies = [
+    { label:"Mono (default)", value:"'JetBrains Mono',monospace" },
+    { label:"Sans-serif", value:"system-ui,sans-serif" },
+    { label:"Serif", value:"Georgia,serif" },
+    { label:"Dyslexic-friendly", value:"'Verdana',sans-serif" },
+  ];
 
   const mdCss = `
-    .md-preview{font-size:15px;line-height:1.85;color:#c0c8e0}
+    .md-preview{font-size:${noteFont.size}px;line-height:${noteFont.lineH};color:#c0c8e0;letter-spacing:${noteFont.spacing}em;font-family:${noteFont.family}}
     .md-preview h1{font-size:1.7em;font-weight:700;margin:.5em 0 .25em;color:#e8eaf6;border-bottom:1px solid rgba(30,60,120,.35);padding-bottom:.2em}
     .md-preview h2{font-size:1.35em;font-weight:600;margin:.7em 0 .2em;color:#d0d8f0}
     .md-preview h3{font-size:1.1em;font-weight:600;margin:.6em 0 .15em;color:#b0bcdc}
     .md-preview h4,.md-preview h5,.md-preview h6{font-size:1em;font-weight:600;color:#9099c0;margin:.4em 0}
     .md-preview p{margin:.4em 0}
-    .md-preview strong{color:#e8eaf6;font-weight:700}
-    .md-preview em{color:#b0c0e0;font-style:italic}
-    .md-preview del{color:#604060;text-decoration:line-through}
+    .md-preview strong{color:#e8eaf6;font-weight:700}.md-preview em{color:#b0c0e0;font-style:italic}.md-preview del{color:#604060;text-decoration:line-through}
     .md-preview code{background:rgba(40,60,120,.3);border:1px solid rgba(40,80,160,.25);border-radius:3px;padding:1px 5px;font-family:'JetBrains Mono',monospace;font-size:.85em;color:#88aaff}
     .md-preview pre{background:rgba(5,5,20,.85);border:1px solid rgba(30,60,120,.3);border-radius:6px;padding:14px 16px;overflow-x:auto;margin:.7em 0}
     .md-preview pre code{background:none;border:none;padding:0;font-size:.9em;color:#a0b8ff}
@@ -798,24 +871,121 @@ const NotesAndJournal = ({ userId }) => {
     .md-preview li{margin:.25em 0;line-height:1.7;list-style:disc;margin-left:1.4em}
     .md-preview a{color:#6090ff;text-decoration:none}.md-preview a:hover{text-decoration:underline}
     .md-preview .cb{display:flex;align-items:center;gap:6px;margin:.25em 0}.md-preview .cb input{accent-color:#4a78ff}
-    .obsidian-editor{font-family:'JetBrains Mono',monospace;font-size:14px;line-height:1.85;color:#c8d0e8;background:transparent;border:none;width:100%;height:100%;resize:none;outline:none;white-space:pre-wrap;tab-size:2}
-    .obsidian-editor::placeholder{color:#2a2a4a}
+    .note-block-text{font-family:${noteFont.family};font-size:${noteFont.size}px;line-height:${noteFont.lineH};letter-spacing:${noteFont.spacing}em;color:#c8d0e8;background:transparent;border:none;width:100%;resize:none;outline:none;white-space:pre-wrap;padding:0}
+    .note-block-text::placeholder{color:#2a2a4a}
+    .block-toolbar{opacity:0;transition:opacity .15s}.block-row:hover .block-toolbar{opacity:1}
   `;
 
+  // ── Block renderer in edit mode ──
+  const BlockEditor = ({ block, afterId }) => {
+    const textRef = useRef();
+    const autoResize = (el) => { if(el){el.style.height="auto";el.style.height=el.scrollHeight+"px";} };
+    useEffect(()=>{ if(block.type==="text"&&textRef.current) autoResize(textRef.current); },[block.content]);
+
+    return (
+      <div className="block-row" style={{ position:"relative", marginBottom:4 }}>
+        {block.type==="text" && (
+          <div style={{ display:"flex", gap:0 }}>
+            <textarea ref={textRef} className="note-block-text" value={block.content} rows={1}
+              onChange={e=>{updateBlock(block.id,"content",e.target.value);autoResize(e.target);}}
+              onKeyDown={e=>{
+                if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addBlockAfter(block.id,mkBlock("text",""));}
+                if(e.key==="Backspace"&&block.content===""){ e.preventDefault(); deleteBlock(block.id); }
+              }}
+              placeholder="Write here... (markdown supported)"
+            />
+            <div className="block-toolbar" style={{ display:"flex", flexDirection:"column", gap:2, marginLeft:6, flexShrink:0 }}>
+              <button onClick={()=>setInsertAfter(insertAfter===block.id?null:block.id)} style={{ background:insertAfter===block.id?"rgba(74,120,255,0.2)":"transparent", border:`1px solid ${insertAfter===block.id?"#4a78ff":C.border}`, color:insertAfter===block.id?C.accent:C.muted, borderRadius:3, fontSize:10, padding:"2px 5px", cursor:"pointer" }} title="Insert media here">+</button>
+              <button onClick={()=>deleteBlock(block.id)} style={{ background:"transparent", border:`1px solid ${C.border}`, color:"#f08080", borderRadius:3, fontSize:10, padding:"2px 5px", cursor:"pointer" }}>×</button>
+            </div>
+          </div>
+        )}
+        {block.type==="image" && (
+          <div style={{ position:"relative", marginBottom:8 }}>
+            <img src={block.data} alt={block.content||"image"} style={{ maxWidth:"100%", borderRadius:6, display:"block", border:`1px solid ${C.border}` }} />
+            {block.content && <div style={{ fontSize:11, color:C.dim, marginTop:4, fontStyle:"italic" }}>{block.content}</div>}
+            <button onClick={()=>deleteBlock(block.id)} style={{ position:"absolute", top:6, right:6, background:"rgba(0,0,0,0.7)", border:"none", color:"#fff", borderRadius:"50%", width:22, height:22, cursor:"pointer", fontSize:12 }}>×</button>
+          </div>
+        )}
+        {block.type==="video" && (()=>{
+          const ytEmbed=getYTEmbed(block.data); const vmEmbed=getVimeoEmbed(block.data);
+          return (
+            <div style={{ position:"relative", marginBottom:8 }}>
+              {(ytEmbed||vmEmbed)
+                ? <iframe src={ytEmbed||vmEmbed} style={{ width:"100%", aspectRatio:"16/9", borderRadius:6, border:`1px solid ${C.border}` }} allowFullScreen title="video" />
+                : <video src={block.data} controls style={{ maxWidth:"100%", borderRadius:6, border:`1px solid ${C.border}` }} />
+              }
+              <button onClick={()=>deleteBlock(block.id)} style={{ position:"absolute", top:6, right:6, background:"rgba(0,0,0,0.7)", border:"none", color:"#fff", borderRadius:"50%", width:22, height:22, cursor:"pointer", fontSize:12 }}>×</button>
+            </div>
+          );
+        })()}
+        {block.type==="url" && (
+          <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 12px", background:C.surface2, borderRadius:6, border:`1px solid ${C.border}`, marginBottom:8, position:"relative" }}>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M5 7a3 3 0 004.24 4.24l1.42-1.42A3 3 0 006.76 5.34L5.34 6.76" stroke={C.accent} strokeWidth="1.5" strokeLinecap="round"/></svg>
+            <a href={block.data} target="_blank" rel="noopener noreferrer" style={{ color:C.accent, fontSize:12, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", flex:1 }}>{block.content||block.data}</a>
+            <button onClick={()=>deleteBlock(block.id)} style={{ background:"transparent", border:"none", color:C.dim, cursor:"pointer", fontSize:16, flexShrink:0 }}>×</button>
+          </div>
+        )}
+
+        {/* Inline insert panel */}
+        {insertAfter===block.id && (
+          <div style={{ background:C.surface2, border:`1px solid ${C.borderHi}`, borderRadius:6, padding:"10px 12px", marginBottom:8, display:"flex", flexWrap:"wrap", gap:8, alignItems:"center" }}>
+            <input ref={noteFileRef} type="file" multiple accept="image/*,video/*" style={{ display:"none" }} onChange={e=>handleNoteFile(e,block.id)} />
+            <button onClick={()=>noteFileRef.current.click()} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.muted, padding:"4px 10px", borderRadius:3, fontSize:11, cursor:"pointer" }}>📎 Image / Video</button>
+            <input value={urlDraft} onChange={e=>setUrlDraft(e.target.value)} placeholder="Paste YouTube, image, or any URL..." onKeyDown={e=>e.key==="Enter"&&insertUrl(block.id)} style={{ flex:1, minWidth:160, background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`, borderRadius:3, color:C.text, padding:"4px 8px", fontSize:11, outline:"none", fontFamily:"inherit" }} />
+            <button onClick={()=>insertUrl(block.id)} style={{ background:C.accentGlow, border:`1px solid ${C.borderHi}`, color:C.accent, padding:"4px 10px", borderRadius:3, fontSize:11, cursor:"pointer" }}>Embed</button>
+            <button onClick={()=>setInsertAfter(null)} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.muted, padding:"4px 8px", borderRadius:3, fontSize:11, cursor:"pointer" }}>Cancel</button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ── Block renderer in preview mode ──
+  const BlockPreview = ({ block }) => {
+    if (block.type==="text") return <div className="md-preview" dangerouslySetInnerHTML={{ __html:renderMd(block.content) }} style={{ marginBottom:6 }} />;
+    if (block.type==="image") return <div style={{ marginBottom:12 }}><img src={block.data} alt={block.content||""} style={{ maxWidth:"100%", borderRadius:6, border:`1px solid ${C.border}` }} />{block.content&&<div style={{ fontSize:11,color:C.dim,marginTop:4,fontStyle:"italic" }}>{block.content}</div>}</div>;
+    if (block.type==="video") { const yt=getYTEmbed(block.data),vm=getVimeoEmbed(block.data); return <div style={{ marginBottom:12 }}>{(yt||vm)?<iframe src={yt||vm} style={{ width:"100%",aspectRatio:"16/9",borderRadius:6,border:`1px solid ${C.border}` }} allowFullScreen title="video" />:<video src={block.data} controls style={{ maxWidth:"100%",borderRadius:6 }} />}</div>; }
+    if (block.type==="url") return <div style={{ margin:"8px 0 12px",padding:"8px 12px",background:C.surface2,borderRadius:6,border:`1px solid ${C.border}` }}><a href={block.data} target="_blank" rel="noopener noreferrer" style={{ color:C.accent,fontSize:13 }}>🔗 {block.content||block.data}</a></div>;
+    return null;
+  };
+
+  // ── Font Settings panel ──
+  const FontSettings = () => (
+    <div style={{ position:"absolute", top:"100%", right:0, zIndex:50, background:"#0a0a1e", border:`1px solid ${C.borderHi}`, borderRadius:8, padding:16, width:240, boxShadow:"0 8px 32px rgba(0,0,0,0.6)" }}>
+      <div style={{ fontSize:11, fontWeight:600, color:C.muted, marginBottom:10, letterSpacing:"0.1em" }}>FONT SETTINGS</div>
+      <div style={{ marginBottom:10 }}>
+        <div style={{ fontSize:10, color:C.dim, marginBottom:4 }}>Font Family</div>
+        {fontFamilies.map(f=><button key={f.value} onClick={()=>setNoteFont(prev=>({...prev,family:f.value}))} style={{ display:"block", width:"100%", textAlign:"left", padding:"5px 8px", borderRadius:3, border:`1px solid ${noteFont.family===f.value?C.borderHi:C.border}`, background:noteFont.family===f.value?C.accentGlow:"transparent", color:noteFont.family===f.value?C.accent:C.muted, fontSize:11, cursor:"pointer", marginBottom:3, fontFamily:f.value }}>{f.label}</button>)}
+      </div>
+      <div style={{ marginBottom:10 }}>
+        <div style={{ fontSize:10, color:C.dim, marginBottom:4 }}>Font Size: {noteFont.size}px</div>
+        <input type="range" min={11} max={22} value={noteFont.size} onChange={e=>setNoteFont(p=>({...p,size:+e.target.value}))} style={{ width:"100%", accentColor:C.accent }} />
+      </div>
+      <div style={{ marginBottom:10 }}>
+        <div style={{ fontSize:10, color:C.dim, marginBottom:4 }}>Line Height: {noteFont.lineH}</div>
+        <input type="range" min={1.2} max={3} step={0.05} value={noteFont.lineH} onChange={e=>setNoteFont(p=>({...p,lineH:+e.target.value}))} style={{ width:"100%", accentColor:C.accent }} />
+      </div>
+      <div>
+        <div style={{ fontSize:10, color:C.dim, marginBottom:4 }}>Letter Spacing: {noteFont.spacing}em</div>
+        <input type="range" min={-0.05} max={0.2} step={0.01} value={noteFont.spacing} onChange={e=>setNoteFont(p=>({...p,spacing:+e.target.value}))} style={{ width:"100%", accentColor:C.accent }} />
+      </div>
+    </div>
+  );
+
   return (
-    <div className="fade-up" style={isFullscreen ? { position:"fixed", inset:0, zIndex:200, background:C.bg, display:"flex", flexDirection:"column" } : {}}>
+    <div className="fade-up" style={isFullscreen?{position:"fixed",inset:0,zIndex:200,background:C.bg,display:"flex",flexDirection:"column"}:{}}>
       <style>{mdCss}</style>
 
       {!isFullscreen && (
         <div style={{ display:"flex", gap:8, marginBottom:16, borderBottom:`1px solid ${C.border}`, paddingBottom:12 }}>
-          {["notes","journal"].map(t => (
-            <button key={t} onClick={() => setSubTab(t)} style={{ padding:"5px 14px", borderRadius:4, border:"none", cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:500, background:subTab===t?C.accentGlow:"transparent", color:subTab===t?C.accent:C.muted, borderBottom:`2px solid ${subTab===t?C.accent:"transparent"}`, transition:"all .15s", textTransform:"capitalize" }}>{t}</button>
+          {["notes","journal"].map(t=>(
+            <button key={t} onClick={()=>setSubTab(t)} style={{ padding:"5px 14px", borderRadius:4, border:"none", cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:500, background:subTab===t?C.accentGlow:"transparent", color:subTab===t?C.accent:C.muted, borderBottom:`2px solid ${subTab===t?C.accent:"transparent"}`, transition:"all .15s", textTransform:"capitalize" }}>{t}</button>
           ))}
         </div>
       )}
 
-      {/* ── NOTES (Obsidian layout) ── */}
-      {subTab === "notes" && (
+      {subTab==="notes" && (
         <div style={{ display:"flex", height:isFullscreen?"100vh":"calc(100vh - 210px)", minHeight:500, border:`1px solid ${C.border}`, borderRadius:isFullscreen?0:8, overflow:"hidden" }}>
 
           {/* Sidebar */}
@@ -823,20 +993,18 @@ const NotesAndJournal = ({ userId }) => {
             <div style={{ width:220, flexShrink:0, borderRight:`1px solid ${C.border}`, display:"flex", flexDirection:"column", background:"#05050e" }}>
               <div style={{ padding:"10px 12px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                 <span style={{ fontSize:10, fontWeight:600, letterSpacing:"0.12em", color:C.muted, fontFamily:"'JetBrains Mono',monospace" }}>NOTES</span>
-                <button onClick={newNote} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 2px" }} title="New note">+</button>
+                <button onClick={newNote} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 2px" }}>+</button>
               </div>
               <div style={{ padding:"7px 10px", borderBottom:`1px solid ${C.border}` }}>
-                <input value={noteSearch} onChange={e => setNoteSearch(e.target.value)} placeholder="Search notes..." style={{ width:"100%", background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:4, color:C.text, padding:"5px 8px", fontSize:11, outline:"none", fontFamily:"inherit" }} />
+                <input value={noteSearch} onChange={e=>setNoteSearch(e.target.value)} placeholder="Search..." style={{ width:"100%", background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:4, color:C.text, padding:"5px 8px", fontSize:11, outline:"none", fontFamily:"inherit" }} />
               </div>
               <div style={{ flex:1, overflowY:"auto" }}>
-                {filteredNotes.length === 0 && (
-                  <div style={{ padding:"20px 12px", color:C.dim, fontSize:11, textAlign:"center" }}>No notes.<br/><span style={{ color:C.accent, cursor:"pointer" }} onClick={newNote}>Create one</span></div>
-                )}
-                {filteredNotes.map(n => (
-                  <div key={n.id} onClick={() => openNote(n)} style={{ padding:"9px 14px", cursor:"pointer", borderBottom:`1px solid rgba(30,60,120,0.1)`, background:activeNote?.id===n.id?"rgba(74,120,255,0.08)":"transparent", borderLeft:`2px solid ${activeNote?.id===n.id?C.accent:"transparent"}`, transition:"all .1s" }}>
+                {filteredNotes.length===0 && <div style={{ padding:"20px 12px", color:C.dim, fontSize:11, textAlign:"center" }}>No notes.<br/><span style={{ color:C.accent, cursor:"pointer" }} onClick={newNote}>Create one</span></div>}
+                {filteredNotes.map(n=>(
+                  <div key={n.id} onClick={()=>openNote(n)} style={{ padding:"9px 14px", cursor:"pointer", borderBottom:`1px solid rgba(30,60,120,0.1)`, background:activeNote?.id===n.id?"rgba(74,120,255,0.08)":"transparent", borderLeft:`2px solid ${activeNote?.id===n.id?C.accent:"transparent"}`, transition:"all .1s" }}>
                     <div style={{ fontSize:12, fontWeight:500, color:activeNote?.id===n.id?C.accent:C.text, marginBottom:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{n.title||"Untitled"}</div>
-                    <div style={{ fontSize:10, color:C.dim, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{n.updated}</div>
-                    {n.tags && <div style={{ fontSize:9, color:C.muted, marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{n.tags}</div>}
+                    <div style={{ fontSize:10, color:C.dim }}>{n.updated}</div>
+                    {n.tags&&<div style={{ fontSize:9, color:C.muted, marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{n.tags}</div>}
                   </div>
                 ))}
               </div>
@@ -849,37 +1017,40 @@ const NotesAndJournal = ({ userId }) => {
             {activeNote ? (
               <>
                 {/* Toolbar */}
-                <div style={{ padding:"8px 14px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:8, flexShrink:0, background:"#07071a" }}>
-                  {isFullscreen && <button onClick={() => setIsFullscreen(false)} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:12, fontFamily:"inherit", marginRight:4 }}>← Back</button>}
-                  <input value={noteTitle} onChange={e => setNoteTitle(e.target.value)} placeholder="Untitled" style={{ background:"transparent", border:"none", color:C.text, fontSize:14, fontWeight:600, outline:"none", flex:1, fontFamily:"inherit" }} />
-                  <div style={{ display:"flex", gap:6, flexShrink:0, alignItems:"center" }}>
-                    <button onClick={() => setIsPreview(!isPreview)} style={{ background:isPreview?C.accentGlow:"transparent", border:`1px solid ${isPreview?C.borderHi:C.border}`, color:isPreview?C.accent:C.muted, padding:"3px 10px", borderRadius:3, fontSize:10, cursor:"pointer", fontFamily:"inherit", transition:"all .15s" }}>{isPreview?"Edit":"Preview"}</button>
-                    <button onClick={() => setIsFullscreen(!isFullscreen)} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.muted, padding:"3px 8px", borderRadius:3, fontSize:11, cursor:"pointer" }} title={isFullscreen?"Exit fullscreen":"Fullscreen"}>{isFullscreen?"⊡":"⛶"}</button>
+                <div style={{ padding:"8px 14px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:6, flexShrink:0, background:"#07071a", flexWrap:"wrap" }}>
+                  {isFullscreen && <button onClick={()=>setIsFullscreen(false)} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:12, fontFamily:"inherit", marginRight:4 }}>← Back</button>}
+                  <input value={noteTitle} onChange={e=>setNoteTitle(e.target.value)} placeholder="Untitled" style={{ background:"transparent", border:"none", color:C.text, fontSize:14, fontWeight:600, outline:"none", flex:1, minWidth:80, fontFamily:"inherit" }} />
+                  <div style={{ display:"flex", gap:5, flexShrink:0, alignItems:"center", position:"relative" }}>
+                    <button onClick={()=>setIsPreview(!isPreview)} style={{ background:isPreview?C.accentGlow:"transparent", border:`1px solid ${isPreview?C.borderHi:C.border}`, color:isPreview?C.accent:C.muted, padding:"3px 9px", borderRadius:3, fontSize:10, cursor:"pointer", fontFamily:"inherit" }}>{isPreview?"Edit":"Read"}</button>
+                    <button onClick={()=>setShowSettings(!showSettings)} style={{ background:showSettings?C.accentGlow:"transparent", border:`1px solid ${showSettings?C.borderHi:C.border}`, color:showSettings?C.accent:C.muted, padding:"3px 8px", borderRadius:3, fontSize:10, cursor:"pointer" }} title="Font settings">Aa</button>
+                    <button onClick={()=>setIsFullscreen(!isFullscreen)} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.muted, padding:"3px 8px", borderRadius:3, fontSize:11, cursor:"pointer" }}>{isFullscreen?"⊡":"⛶"}</button>
                     <Btn size="sm" variant="primary" onClick={saveNote}>Save</Btn>
-                    {activeNote.id !== "new" && <Btn size="sm" variant="danger" onClick={() => deleteNote(activeNote.id)}>Delete</Btn>}
-                    {!isFullscreen && <button onClick={() => setActiveNote(null)} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:18, padding:"0 2px" }}>×</button>}
+                    {activeNote.id!=="new"&&<Btn size="sm" variant="danger" onClick={()=>deleteNote(activeNote.id)}>Delete</Btn>}
+                    {!isFullscreen&&<button onClick={()=>setActiveNote(null)} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:18, padding:"0 2px" }}>×</button>}
+                    {showSettings && <FontSettings />}
                   </div>
                 </div>
                 {/* Tags */}
                 <div style={{ padding:"5px 16px", borderBottom:`1px solid ${C.border}`, background:"#07071a", flexShrink:0 }}>
-                  <input value={noteTags} onChange={e => setNoteTags(e.target.value)} placeholder="tags: #work #ideas..." style={{ width:"100%", background:"transparent", border:"none", color:C.muted, fontSize:11, outline:"none", fontFamily:"'JetBrains Mono',monospace" }} />
+                  <input value={noteTags} onChange={e=>setNoteTags(e.target.value)} placeholder="tags: #work #ideas..." style={{ width:"100%", background:"transparent", border:"none", color:C.muted, fontSize:11, outline:"none", fontFamily:"'JetBrains Mono',monospace" }} />
                 </div>
                 {/* Content */}
                 <div style={{ flex:1, overflow:"auto", padding:"20px 28px" }}>
                   {isPreview
-                    ? <div className="md-preview" dangerouslySetInnerHTML={{ __html: renderMd(noteBody) }} style={{ maxWidth:720, margin:"0 auto" }} />
-                    : <textarea className="obsidian-editor" value={noteBody} onChange={e => setNoteBody(e.target.value)}
-                        placeholder={"Start writing...\n\n# Heading 1\n## Heading 2\n**bold**  *italic*  `code`\n- list item\n- [ ] checkbox\n> blockquote\n\n---"} style={{ minHeight:"100%", display:"block" }} />
+                    ? <div style={{ maxWidth:720, margin:"0 auto" }}>{noteBlocks.map(b=><BlockPreview key={b.id} block={b} />)}</div>
+                    : <div style={{ maxWidth:720, margin:"0 auto" }}>
+                        {noteBlocks.map(b=><BlockEditor key={b.id} block={b} afterId={b.id} />)}
+                        {/* Add block at end */}
+                        <div style={{ display:"flex", gap:8, marginTop:12, paddingTop:12, borderTop:`1px dashed rgba(30,60,120,0.2)` }}>
+                          <button onClick={()=>addBlockAtEnd(mkBlock("text",""))} style={{ background:"transparent", border:`1px dashed ${C.border}`, color:C.dim, padding:"5px 12px", borderRadius:4, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>+ Text</button>
+                          <button onClick={()=>{setInsertAfter("__end__");noteFileRef.current.click();}} style={{ background:"transparent", border:`1px dashed ${C.border}`, color:C.dim, padding:"5px 12px", borderRadius:4, fontSize:11, cursor:"pointer" }}>+ Image/Video</button>
+                          <div style={{ display:"flex", gap:4, flex:1 }}>
+                            <input value={insertAfter==="__end__"?"":urlDraft} onChange={e=>{setUrlDraft(e.target.value);setInsertAfter("__end__");}} placeholder="+ Paste URL to embed..." onKeyDown={e=>e.key==="Enter"&&insertUrl(null)} style={{ flex:1, background:"rgba(255,255,255,0.04)", border:`1px dashed ${C.border}`, borderRadius:4, color:C.text, padding:"5px 8px", fontSize:11, outline:"none", fontFamily:"inherit" }} />
+                          </div>
+                        </div>
+                        <input ref={noteFileRef} type="file" multiple accept="image/*,video/*" style={{ display:"none" }} onChange={e=>handleNoteFile(e, insertAfter==="__end__"?null:insertAfter)} />
+                      </div>
                   }
-                </div>
-                {/* Attachments */}
-                <div style={{ padding:"8px 14px", borderTop:`1px solid ${C.border}`, background:"#07071a", flexShrink:0 }}>
-                  <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-                    <button onClick={() => noteFileRef.current.click()} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.muted, padding:"3px 10px", borderRadius:3, fontSize:10, cursor:"pointer", fontFamily:"inherit" }}>+ File / Image</button>
-                    <input value={urlInput} onChange={e => setUrlInput(e.target.value)} placeholder="Paste URL, press Enter" onKeyDown={e => e.key==="Enter"&&addUrl()} style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:3, color:C.text, padding:"3px 8px", fontSize:11, outline:"none", fontFamily:"inherit", flex:1, minWidth:140 }} />
-                  </div>
-                  <input ref={noteFileRef} type="file" multiple accept="image/*,video/*,.pdf,.txt,.md" style={{ display:"none" }} onChange={handleNoteFile} />
-                  {attachments.length > 0 && <AttachmentPreview items={attachments} onRemove={i => setAttachments(a => a.filter((_,idx) => idx!==i))} />}
                 </div>
               </>
             ) : (
@@ -894,20 +1065,20 @@ const NotesAndJournal = ({ userId }) => {
       )}
 
       {/* ── JOURNAL ── */}
-      {subTab === "journal" && (
+      {subTab==="journal" && (
         <>
-          {journalView === "list" && (
+          {journalView==="list" && (
             <div style={{ maxWidth:680, margin:"0 auto" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
                 <div><div style={{ fontSize:20, fontWeight:700 }}>Journal</div><div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{posts.length} {posts.length===1?"entry":"entries"}</div></div>
-                <Btn variant="primary" onClick={() => { setJTitle(""); setJBody(""); setJMood("Neutral"); setJAttachments([]); setJournalView("write"); }}>+ New Entry</Btn>
+                <Btn variant="primary" onClick={()=>{setJTitle("");setJBody("");setJMood("Neutral");setJAttachments([]);setJournalView("write");}}>+ New Entry</Btn>
               </div>
-              {posts.length > 4 && <Input value={jSearch} onChange={e => setJSearch(e.target.value)} placeholder="Search..." style={{ marginBottom:14 }} />}
-              {filteredPosts.length === 0 && <Card style={{ textAlign:"center", padding:"40px 20px" }}><div style={{ color:C.dim, fontSize:13 }}>{posts.length===0?"No entries yet.":"No results"}</div></Card>}
+              {posts.length>4&&<Input value={jSearch} onChange={e=>setJSearch(e.target.value)} placeholder="Search..." style={{ marginBottom:14 }} />}
+              {filteredPosts.length===0&&<Card style={{ textAlign:"center", padding:"40px 20px" }}><div style={{ color:C.dim, fontSize:13 }}>{posts.length===0?"No entries yet.":"No results"}</div></Card>}
               <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                {filteredPosts.map(post => (
-                  <Card key={post.id} onClick={() => { setActivePost(post); setJournalView("read"); }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}><div style={{ fontSize:14, fontWeight:600 }}>{post.title}</div><span onClick={e => { e.stopPropagation(); setPosts(posts.filter(p => p.id!==post.id)); }} style={{ color:C.dim, cursor:"pointer", fontSize:18, padding:"0 4px" }}>×</span></div>
+                {filteredPosts.map(post=>(
+                  <Card key={post.id} onClick={()=>{setActivePost(post);setJournalView("read");}}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}><div style={{ fontSize:14, fontWeight:600 }}>{post.title}</div><span onClick={e=>{e.stopPropagation();setPosts(posts.filter(p=>p.id!==post.id));}} style={{ color:C.dim, cursor:"pointer", fontSize:18, padding:"0 4px" }}>×</span></div>
                     <div style={{ fontSize:12, color:C.muted, lineHeight:1.6, marginBottom:10, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>{post.body}</div>
                     <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ fontSize:11, color:C.dim }}>{post.date}</span><span style={{ fontSize:11, color:C.dim }}>{post.wordCount} words · {post.mood}</span></div>
                   </Card>
@@ -915,32 +1086,32 @@ const NotesAndJournal = ({ userId }) => {
               </div>
             </div>
           )}
-          {journalView === "write" && (
+          {journalView==="write" && (
             <div style={{ maxWidth:680, margin:"0 auto" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:24 }}><Btn size="sm" variant="ghost" onClick={() => setJournalView("list")}>← Back</Btn></div>
+              <div style={{ marginBottom:20 }}><Btn size="sm" variant="ghost" onClick={()=>setJournalView("list")}>← Back</Btn></div>
               <Card>
-                <input value={jTitle} onChange={e => setJTitle(e.target.value)} placeholder="Title..." style={{ width:"100%", background:"transparent", border:"none", borderBottom:`1px solid ${C.border}`, color:C.text, padding:"4px 0 12px", fontSize:22, fontWeight:700, outline:"none", marginBottom:16, fontFamily:"inherit" }} />
-                <div style={{ marginBottom:14 }}><Label style={{ marginBottom:8 }}>Mood</Label><div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>{moods.map(m => <button key={m} onClick={() => setJMood(m)} style={{ padding:"4px 12px", borderRadius:3, fontSize:11, cursor:"pointer", fontFamily:"inherit", background:jMood===m?C.accentGlow:"transparent", border:`1px solid ${jMood===m?C.borderHi:C.border}`, color:jMood===m?C.accent:C.muted, transition:"all .15s" }}>{m}</button>)}</div></div>
-                <textarea value={jBody} onChange={e => setJBody(e.target.value)} placeholder="What's on your mind..." autoFocus style={{ width:"100%", background:"transparent", border:"none", color:C.text, fontSize:14, lineHeight:1.8, outline:"none", resize:"vertical", minHeight:240, fontFamily:"inherit" }} />
+                <input value={jTitle} onChange={e=>setJTitle(e.target.value)} placeholder="Title..." style={{ width:"100%", background:"transparent", border:"none", borderBottom:`1px solid ${C.border}`, color:C.text, padding:"4px 0 12px", fontSize:22, fontWeight:700, outline:"none", marginBottom:16, fontFamily:"inherit" }} />
+                <div style={{ marginBottom:14 }}><Label style={{ marginBottom:8 }}>Mood</Label><div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>{moods.map(m=><button key={m} onClick={()=>setJMood(m)} style={{ padding:"4px 12px", borderRadius:3, fontSize:11, cursor:"pointer", fontFamily:"inherit", background:jMood===m?C.accentGlow:"transparent", border:`1px solid ${jMood===m?C.borderHi:C.border}`, color:jMood===m?C.accent:C.muted }}>{m}</button>)}</div></div>
+                <textarea value={jBody} onChange={e=>setJBody(e.target.value)} placeholder="What's on your mind..." autoFocus style={{ width:"100%", background:"transparent", border:"none", color:C.text, fontSize:14, lineHeight:1.8, outline:"none", resize:"vertical", minHeight:240, fontFamily:"inherit" }} />
                 <div style={{ marginTop:12, paddingTop:12, borderTop:`1px solid ${C.border}` }}>
                   <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:8 }}>
-                    <Btn size="sm" variant="ghost" onClick={() => jFileRef.current.click()}>+ Photo / Video / File</Btn>
+                    <Btn size="sm" variant="ghost" onClick={()=>jFileRef.current.click()}>+ Photo / Video / File</Btn>
                     <div style={{ display:"flex", gap:6, flex:1, minWidth:180 }}>
-                      <Input value={jUrlInput} onChange={e => setJUrlInput(e.target.value)} placeholder="Paste URL..." style={{ flex:1, fontSize:12 }} onKeyDown={e => e.key==="Enter"&&addJUrl()} />
-                      <Btn size="sm" onClick={addJUrl}>Add URL</Btn>
+                      <Input value={jUrlInput} onChange={e=>setJUrlInput(e.target.value)} placeholder="Paste URL..." style={{ flex:1, fontSize:12 }} onKeyDown={e=>e.key==="Enter"&&addJUrl()} />
+                      <Btn size="sm" onClick={addJUrl}>Add</Btn>
                     </div>
                   </div>
                   <input ref={jFileRef} type="file" multiple accept="image/*,video/*,.pdf,.txt" style={{ display:"none" }} onChange={handleJFile} />
-                  {jAttachments.length > 0 && <AttachmentPreview items={jAttachments} onRemove={i => setJAttachments(a => a.filter((_,idx) => idx!==i))} />}
+                  {jAttachments.length>0&&<div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:8 }}>{jAttachments.map((a,i)=><div key={i} style={{ position:"relative", background:C.surface2, border:`1px solid ${C.border}`, borderRadius:6, overflow:"hidden" }}>{a.type==="image"&&<img src={a.data} alt={a.name} style={{ width:80, height:60, objectFit:"cover", display:"block" }} />}{a.type==="url"&&<a href={a.data} target="_blank" rel="noopener noreferrer" style={{ display:"block", padding:"6px 10px", fontSize:11, color:C.accent, maxWidth:160 }}>{a.name}</a>}<div onClick={()=>setJAttachments(prev=>prev.filter((_,idx)=>idx!==i))} style={{ position:"absolute", top:2, right:2, background:"rgba(0,0,0,0.7)", color:"#fff", borderRadius:"50%", width:16, height:16, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:10 }}>×</div></div>)}</div>}
                 </div>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:16, paddingTop:14, borderTop:`1px solid ${C.border}` }}><span style={{ fontSize:12, color:C.dim }}>{jBody.trim()?jBody.trim().split(/\s+/).length:0} words</span><Btn variant="primary" onClick={saveJournal} disabled={!jBody.trim()}>Save Entry</Btn></div>
               </Card>
             </div>
           )}
-          {journalView === "read" && activePost && (
+          {journalView==="read" && activePost && (
             <div style={{ maxWidth:680, margin:"0 auto" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}><Btn size="sm" variant="ghost" onClick={() => { setJournalView("list"); setActivePost(null); }}>← Back</Btn><Btn size="sm" variant="danger" onClick={() => { setPosts(posts.filter(p => p.id!==activePost.id)); setJournalView("list"); setActivePost(null); }}>Delete</Btn></div>
-              <Card><div style={{ fontSize:11, color:C.muted, fontFamily:"'JetBrains Mono',monospace", marginBottom:8 }}>{activePost.date} · {activePost.wordCount} words · {activePost.mood}</div><h1 style={{ fontSize:24, fontWeight:700, marginBottom:24 }}>{activePost.title}</h1><div style={{ fontSize:15, color:"#c0c8e0", lineHeight:1.9, whiteSpace:"pre-wrap" }}>{activePost.body}</div>{activePost.attachments?.length>0&&<div style={{ marginTop:16, paddingTop:14, borderTop:`1px solid ${C.border}` }}><AttachmentPreview items={activePost.attachments} /></div>}</Card>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}><Btn size="sm" variant="ghost" onClick={()=>{setJournalView("list");setActivePost(null);}}>← Back</Btn><Btn size="sm" variant="danger" onClick={()=>{setPosts(posts.filter(p=>p.id!==activePost.id));setJournalView("list");setActivePost(null);}}>Delete</Btn></div>
+              <Card><div style={{ fontSize:11, color:C.muted, fontFamily:"'JetBrains Mono',monospace", marginBottom:8 }}>{activePost.date} · {activePost.wordCount} words · {activePost.mood}</div><h1 style={{ fontSize:24, fontWeight:700, marginBottom:24 }}>{activePost.title}</h1><div style={{ fontSize:15, color:"#c0c8e0", lineHeight:1.9, whiteSpace:"pre-wrap" }}>{activePost.body}</div></Card>
             </div>
           )}
         </>
@@ -949,371 +1120,156 @@ const NotesAndJournal = ({ userId }) => {
   );
 };
 
-
-// ─── FOCUS TIMER ─────────────────────────────────────────────────────────────
-const FocusTimer = ({ userId }) => {
-  const [sessions, setSessions] = useSynced("focus_sessions", 0, userId);
-  const [unlocked, setUnlocked] = useSynced("solar_unlocked", [], userId);
-  const [running, setRunning] = useState(false);
-  const [seconds, setSeconds] = useState(25 * 60);
-  const [duration, setDuration] = useState(25);
-  const [justUnlocked, setJustUnlocked] = useState(null);
-  const [showCollection, setShowCollection] = useState(false);
-  const timerRef = useRef(null);
-
-  useEffect(() => {
-    if (running) {
-      timerRef.current = setInterval(() => {
-        setSeconds(s => {
-          if (s <= 1) {
-            clearInterval(timerRef.current); setRunning(false);
-            const newSessions = sessions + 1; setSessions(newSessions);
-            const newUnlock = SOLAR_OBJECTS.find(obj => obj.sessionsNeeded === newSessions && !unlocked.includes(obj.id));
-            if (newUnlock) { setUnlocked([...unlocked, newUnlock.id]); setJustUnlocked(newUnlock); }
-            return duration * 60;
-          }
-          return s - 1;
-        });
-      }, 1000);
-    } else clearInterval(timerRef.current);
-    return () => clearInterval(timerRef.current);
-  }, [running]);
-
-  const mins = Math.floor(seconds / 60).toString().padStart(2, "0");
-  const secs = (seconds % 60).toString().padStart(2, "0");
-  const nextObj = SOLAR_OBJECTS.find(obj => !unlocked.includes(obj.id));
-  const pct = ((duration * 60 - seconds) / (duration * 60)) * 100;
-  const circumference = 2 * Math.PI * 90;
-
-  return (
-    <div className="fade-up" style={{ maxWidth: 600, margin: "0 auto" }}>
-      <div style={{ textAlign: "center", marginBottom: 24 }}><div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Focus Timer</div><div style={{ fontSize: 12, color: C.muted }}>{sessions} sessions · {unlocked.length}/{SOLAR_OBJECTS.length} unlocked</div></div>
-      <Card style={{ textAlign: "center", marginBottom: 16, padding: "32px 20px" }}>
-        <div style={{ position: "relative", display: "inline-block", marginBottom: 24 }}>
-          <svg width="200" height="200" viewBox="0 0 200 200">
-            <circle cx="100" cy="100" r="90" fill="none" stroke={C.surface2} strokeWidth="4" />
-            <circle cx="100" cy="100" r="90" fill="none" stroke={C.accent} strokeWidth="4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference - (circumference * pct) / 100} transform="rotate(-90 100 100)" style={{ transition: "stroke-dashoffset 1s linear" }} />
-          </svg>
-          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ fontSize: 42, fontWeight: 700, color: C.text, fontFamily: "'JetBrains Mono',monospace" }}>{mins}:{secs}</div>
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{running ? "FOCUS" : "READY"}</div>
-          </div>
-        </div>
-        {!running && <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 20 }}>{[15,25,45,60].map(d => <button key={d} onClick={() => { setDuration(d); setSeconds(d * 60); }} style={{ padding: "5px 12px", borderRadius: 4, fontSize: 12, cursor: "pointer", fontFamily: "inherit", background: duration === d ? C.accentGlow : "transparent", border: `1px solid ${duration === d ? C.borderHi : C.border}`, color: duration === d ? C.accent : C.muted, transition: "all 0.15s" }}>{d}m</button>)}</div>}
-        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-          <Btn variant="primary" onClick={() => setRunning(!running)}>{running ? "Pause" : "Start Session"}</Btn>
-          {!running && seconds !== duration * 60 && <Btn variant="ghost" onClick={() => setSeconds(duration * 60)}>Reset</Btn>}
-        </div>
-        {nextObj && <div style={{ marginTop: 20, padding: "10px 14px", background: C.surface2, borderRadius: 6, border: `1px solid ${C.border}`, fontSize: 12, color: C.muted }}>Next: <span style={{ color: nextObj.color }}>{nextObj.name}</span> in {nextObj.sessionsNeeded - sessions} session{nextObj.sessionsNeeded - sessions !== 1 ? "s" : ""}</div>}
-      </Card>
-      <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showCollection ? 14 : 0 }}>
-          <Label style={{ marginBottom: 0 }}>Solar Collection</Label>
-          <Btn size="sm" variant="ghost" onClick={() => setShowCollection(!showCollection)}>{showCollection ? "Hide" : "Show"}</Btn>
-        </div>
-        {showCollection && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(80px,1fr))", gap: 12 }}>
-          {SOLAR_OBJECTS.map(obj => { const isUnlocked = unlocked.includes(obj.id); return (
-            <div key={obj.id} style={{ textAlign: "center", opacity: isUnlocked ? 1 : 0.2 }} title={isUnlocked ? obj.desc : `Unlock at ${obj.sessionsNeeded} sessions`}>
-              <div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>{obj.type === "star" ? <StarShape color={isUnlocked ? obj.color : "#444"} size={36} /> : <SmallPlanet color={isUnlocked ? obj.color : "#333"} size={36} glow={isUnlocked} />}</div>
-              <div style={{ fontSize: 9, color: isUnlocked ? obj.color : C.dim, fontFamily: "'JetBrains Mono',monospace" }}>{obj.name}</div>
-              {!isUnlocked && <div style={{ fontSize: 9, color: C.dim }}>{obj.sessionsNeeded}×</div>}
-            </div>
-          ); })}
-        </div>}
-      </Card>
-      {justUnlocked && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", backdropFilter: "blur(12px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} className="fade-in">
-          <div style={{ textAlign: "center", animation: "unlockPop 0.5s ease both" }}>
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>{justUnlocked.type === "star" ? <StarShape color={justUnlocked.color} size={80} /> : <SmallPlanet color={justUnlocked.color} size={80} glow />}</div>
-            <div style={{ fontSize: 12, letterSpacing: "0.2em", color: C.muted, fontFamily: "'JetBrains Mono',monospace", marginBottom: 8 }}>UNLOCKED</div>
-            <div style={{ fontSize: 28, fontWeight: 700, color: justUnlocked.color, marginBottom: 8 }}>{justUnlocked.name}</div>
-            <div style={{ fontSize: 14, color: C.muted, marginBottom: 24 }}>{justUnlocked.desc}</div>
-            <Btn variant="primary" onClick={() => setJustUnlocked(null)}>Continue</Btn>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ─── BIBLE ────────────────────────────────────────────────────────────────────
-const BIBLE_BOOKS = [
-  { name: "Genesis", chapters: 50 }, { name: "Exodus", chapters: 40 }, { name: "Leviticus", chapters: 27 },
-  { name: "Numbers", chapters: 36 }, { name: "Deuteronomy", chapters: 34 }, { name: "Joshua", chapters: 24 },
-  { name: "Judges", chapters: 21 }, { name: "Ruth", chapters: 4 }, { name: "1 Samuel", chapters: 31 },
-  { name: "2 Samuel", chapters: 24 }, { name: "Psalms", chapters: 150 }, { name: "Proverbs", chapters: 31 },
-  { name: "Matthew", chapters: 28 }, { name: "Mark", chapters: 16 }, { name: "Luke", chapters: 24 },
-  { name: "John", chapters: 21 }, { name: "Acts", chapters: 28 }, { name: "Romans", chapters: 16 },
-  { name: "1 Corinthians", chapters: 16 }, { name: "Galatians", chapters: 6 }, { name: "Philippians", chapters: 4 },
-  { name: "Revelation", chapters: 22 },
-];
-
-const Bible = ({ userId }) => {
-  const [read, setRead] = useSynced("bible_read", {}, userId);
-  const [selected, setSelected] = useSynced("bible_book", "Matthew", userId);
-  const [note, setNote] = useState("");
-  const [notes, setNotes] = useSynced("bible_notes", [], userId);
-  const [view, setView] = useState("tracker");
-  const book = BIBLE_BOOKS.find(b => b.name === selected);
-  const bookRead = read[selected] || [];
-  const totalChapters = BIBLE_BOOKS.reduce((s, b) => s + b.chapters, 0);
-  const totalRead = Object.entries(read).reduce((s, [bName, chs]) => { const b = BIBLE_BOOKS.find(x => x.name === bName); return s + (b ? Math.min(chs.length, b.chapters) : 0); }, 0);
-  const toggleChapter = ch => { const cur = read[selected] || []; setRead({ ...read, [selected]: cur.includes(ch) ? cur.filter(c => c !== ch) : [...cur, ch] }); };
-  const addNote = () => { if (!note.trim()) return; setNotes([{ id: Date.now(), book: selected, text: note.trim(), date: new Date().toLocaleDateString() }, ...notes]); setNote(""); };
-  return (
-    <div className="fade-up">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}><div><div style={{ fontSize: 20, fontWeight: 700 }}>Bible Tracker</div><div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{totalRead} / {totalChapters} chapters</div></div><div style={{ display: "flex", gap: 8 }}><Btn size="sm" variant={view === "tracker" ? "primary" : "ghost"} onClick={() => setView("tracker")}>Chapters</Btn><Btn size="sm" variant={view === "notes" ? "primary" : "ghost"} onClick={() => setView("notes")}>Notes</Btn></div></div>
-      <Card style={{ marginBottom: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}><Label style={{ marginBottom: 0 }}>Overall Progress</Label><span style={{ fontSize: 12, color: C.muted, fontFamily: "'JetBrains Mono',monospace" }}>{Math.round((totalRead / totalChapters) * 100)}%</span></div>
-        <Bar pct={(totalRead / totalChapters) * 100} color={C.silver} />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 12 }}>
-          <StatBox label="Read" value={totalRead} color={C.silver} /><StatBox label="Left" value={totalChapters - totalRead} color={C.muted} /><StatBox label="Done" value={Object.keys(read).filter(b => { const bk = BIBLE_BOOKS.find(x => x.name === b); return bk && (read[b] || []).length >= bk.chapters; }).length} color={C.blue} />
-        </div>
-      </Card>
-      {view === "tracker" && (<>
-        <Card style={{ marginBottom: 14 }}><Label>Select Book</Label><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{BIBLE_BOOKS.map(b => { const bRead = (read[b.name] || []).length; const complete = bRead >= b.chapters; const partial = bRead > 0 && !complete; return <button key={b.name} onClick={() => setSelected(b.name)} style={{ padding: "4px 10px", borderRadius: 3, fontSize: 11, fontWeight: 500, cursor: "pointer", transition: "all 0.15s", fontFamily: "inherit", background: selected === b.name ? C.accentGlow : complete ? "rgba(80,200,120,0.06)" : "transparent", border: `1px solid ${selected === b.name ? C.borderHi : complete ? "rgba(80,200,120,0.2)" : C.border}`, color: selected === b.name ? C.accent : complete ? "#50c878" : partial ? C.blue : C.muted }}>{b.name}</button>; })}</div></Card>
-        {book && (<Card><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><Label style={{ marginBottom: 0 }}>{book.name} — {bookRead.length}/{book.chapters}</Label><Btn size="sm" variant="ghost" onClick={() => setRead({ ...read, [selected]: [] })}>Reset</Btn></div><Bar pct={(bookRead.length / book.chapters) * 100} color={C.silver} /><div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 14 }}>{Array.from({ length: book.chapters }, (_, i) => i + 1).map(ch => { const done = bookRead.includes(ch); return <div key={ch} onClick={() => toggleChapter(ch)} style={{ width: 34, height: 34, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, cursor: "pointer", transition: "all 0.15s", fontFamily: "'JetBrains Mono',monospace", background: done ? C.accentGlow : C.surface2, border: `1px solid ${done ? C.borderHi : C.border}`, color: done ? C.accent : C.muted }}>{ch}</div>; })}</div></Card>)}
-      </>)}
-      {view === "notes" && (<div style={{ display: "flex", flexDirection: "column", gap: 12 }}><Card><Label>Add Note — {selected}</Label><Input value={note} onChange={e => setNote(e.target.value)} placeholder="Write your reflection..." multiline rows={3} style={{ marginBottom: 10 }} /><Btn variant="primary" onClick={addNote} disabled={!note.trim()}>Save Note</Btn></Card>{notes.map(n => (<Card key={n.id}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ fontSize: 11, color: C.accent, fontFamily: "'JetBrains Mono',monospace" }}>{n.book}</span><div style={{ display: "flex", alignItems: "center", gap: 10 }}><span style={{ fontSize: 11, color: C.dim }}>{n.date}</span><span onClick={() => setNotes(notes.filter(x => x.id !== n.id))} style={{ color: C.dim, cursor: "pointer", fontSize: 16 }}>×</span></div></div><div style={{ fontSize: 13, lineHeight: 1.7 }}>{n.text}</div></Card>))}{notes.length === 0 && <Card style={{ textAlign: "center", padding: "32px 20px" }}><div style={{ color: C.dim, fontSize: 13 }}>No notes yet</div></Card>}</div>)}
-    </div>
-  );
-};
-
-// ─── EVENING REPORT ───────────────────────────────────────────────────────────
-const EveningReport = ({ onClose, userId }) => {
-  const [report, setReport] = useState(""); const [loading, setLoading] = useState(true);
-  const [saved, setSaved] = useState(false);
-  const [water] = useSynced(`water_${todayKey()}`, 0, userId);
-  const [calories] = useSynced(`calories_${todayKey()}`, [], userId);
-  const [todos] = useSynced("todos", [], userId);
-  const [plans] = useSynced("workout_plans", [], userId);
-  const [notes] = useSynced("obsidian_notes", [], userId);
-  const [archive, setArchive] = useSynced("report_archive", [], userId);
-
-  useEffect(() => {
-    (async () => {
-      const cal = calories.reduce((s, e) => s + (e.cal || 0), 0);
-      const tasksDone = todos.filter(t => t.done);
-      const tasksTotal = todos.length;
-      const gymDone = plans.reduce((s, p) => s + p.exercises.filter(e => e.done).length, 0);
-      const gymTotal = plans.reduce((s, p) => s + p.exercises.length, 0);
-      const todayNotes = notes.filter(n => n.updated === new Date().toLocaleDateString()).map(n => n.title).join(", ");
-      const calItems = calories.map(e => `${e.name} (${e.cal}kcal)`).join(", ");
-      const doneTasksList = tasksDone.map(t => t.text).join(", ");
-
-      const prompt = `Write Vince's end-of-day report. Be warm, direct, and specific — mention exactly what was accomplished.
-
-TODAY'S DATA:
-- Water: ${water}/8 cups
-- Calories consumed: ${cal} kcal (items: ${calItems || "none logged"})
-- Tasks completed: ${tasksDone.length}/${tasksTotal}${doneTasksList ? ` — specifically: ${doneTasksList}` : ""}
-- Workout: ${gymDone}/${gymTotal} exercises done
-- Notes written today: ${todayNotes || "none"}
-
-Write a 4-5 sentence report that:
-1. Summarizes what was actually completed today (be specific, name the tasks/food/exercises)
-2. Notes any areas that were light
-3. Ends with one clear, actionable nudge for tomorrow
-
-Keep it personal, direct, and honest. No fluff.`;
-
-      const res = await callAI(prompt, "Personal AI companion for Vince. Brief, warm, specific. Reference actual data provided.");
-      setReport(res);
-      setLoading(false);
-    })();
-  }, []);
-
-  const saveToArchive = () => {
-    const dateLabel = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-    const entry = { id: Date.now(), date: dateLabel, dateKey: todayKey(), report, savedAt: new Date().toISOString() };
-    setArchive([entry, ...archive.filter(a => a.dateKey !== todayKey())]);
-    setSaved(true);
-  };
-
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.95)", backdropFilter: "blur(12px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }} className="fade-in">
-      <div style={{ width: "100%", maxWidth: 480 }}>
-        <Card style={{ boxShadow: `0 0 40px ${C.blueGlow}` }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><Label style={{ marginBottom: 0 }}>End of Day Report</Label><span onClick={onClose} style={{ color: C.muted, cursor: "pointer", fontSize: 20 }}>×</span></div>
-          <div style={{ fontSize: 11, color: C.dim, fontFamily: "'JetBrains Mono',monospace", marginBottom: 14 }}>{new Date().toDateString().toUpperCase()}</div>
-          {loading ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, color: C.muted, fontSize: 13 }}><Spinner /> Generating your daily recap...</div>
-          ) : (
-            <div style={{ fontSize: 14, color: "#c0c8e0", lineHeight: 1.9, whiteSpace: "pre-wrap" }}>{report}</div>
-          )}
-          <div style={{ marginTop: 18, display: "flex", gap: 8 }}>
-            {!loading && !saved && <Btn variant="primary" onClick={saveToArchive}>Save to Archive</Btn>}
-            {saved && <div style={{ fontSize: 12, color: "#50c878", display: "flex", alignItems: "center", gap: 6 }}><svg width="12" height="12" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5 3.5-4" stroke="#50c878" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>Saved to Archive</div>}
-            <Btn onClick={onClose}>Close</Btn>
-          </div>
-        </Card>
-      </div>
-    </div>
-  );
-};
-
-// ─── REPORT ARCHIVE ──────────────────────────────────────────────────────────
-const ReportArchive = ({ userId }) => {
-  const [archive] = useSynced("report_archive", [], userId);
-  const [expanded, setExpanded] = useState(null);
-  return (
-    <div className="fade-up">
-      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Report Archive</div>
-      <div style={{ fontSize: 12, color: C.muted, marginBottom: 20 }}>{archive.length} saved {archive.length === 1 ? "report" : "reports"}</div>
-      {archive.length === 0 && (
-        <Card style={{ textAlign: "center", padding: "40px 20px" }}>
-          <div style={{ color: C.dim, fontSize: 13 }}>No reports yet. Generate your first End of Day Report tonight.</div>
-        </Card>
-      )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {archive.map(entry => (
-          <Card key={entry.id} onClick={() => setExpanded(expanded === entry.id ? null : entry.id)} style={{ cursor: "pointer" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{entry.date}</div>
-                {expanded !== entry.id && <div style={{ fontSize: 12, color: C.muted, display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{entry.report}</div>}
-              </div>
-              <div style={{ color: C.muted, fontSize: 16, marginLeft: 12 }}>{expanded === entry.id ? "−" : "+"}</div>
-            </div>
-            {expanded === entry.id && (
-              <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}`, fontSize: 14, color: "#c0c8e0", lineHeight: 1.9, whiteSpace: "pre-wrap" }} onClick={e => e.stopPropagation()}>
-                {entry.report}
-              </div>
-            )}
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-};
-
 // ─── APP ─────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [user, setUser] = useState(() => { const s = JSON.parse(localStorage.getItem("sb_session") || "null"); return s?.user || null; });
+  const [user, setUser] = useState(() => { const s=JSON.parse(localStorage.getItem("sb_session")||"null"); return s?.user||null; });
   const [tab, setTab] = useState("home");
   const [showReport, setShowReport] = useState(false);
-  const isEve = new Date().getHours() >= 20;
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const logout = () => { localStorage.removeItem("sb_session"); setUser(null); };
+  const [bgTheme, setBgTheme] = useSynced("bg_theme", "default", user?.id);
 
-  if (!user) return <AuthScreen onLogin={u => setUser(u)} />;
+  if (!user) return <AuthScreen onLogin={u=>setUser(u)} />;
 
   const tabs = [
-    { id: "home", label: "Home" },
-    { id: "fitness", label: "Fitness" },
-    { id: "food", label: "Food" },
-    { id: "logs", label: "Logs" },
-    { id: "goals", label: "Goals" },
-    { id: "focus", label: "Focus" },
-    { id: "bible", label: "Bible" },
-    { id: "notes", label: "Notes" },
-    { id: "archive", label: "Archive" },
+    { id:"home", label:"Home" },
+    { id:"fitness", label:"Fitness" },
+    { id:"food", label:"Food" },
+    { id:"logs", label:"Logs" },
+    { id:"goals", label:"Goals" },
+    { id:"focus", label:"Focus" },
+    { id:"bible", label:"Bible" },
+    { id:"notes", label:"Notes" },
+    { id:"archive", label:"Archive" },
   ];
 
-  return (
-    <div style={{ minHeight: "100vh", background: C.bg }}>
-      <style>{css}</style>
-      <div style={{ position: "fixed", inset: 0, backgroundImage: `linear-gradient(${C.border} 1px, transparent 1px), linear-gradient(90deg, ${C.border} 1px, transparent 1px)`, backgroundSize: "60px 60px", pointerEvents: "none", zIndex: 0, opacity: 0.4 }} />
-      <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: 600, height: 300, background: `radial-gradient(ellipse, ${C.blueGlow} 0%, transparent 70%)`, pointerEvents: "none", zIndex: 0 }} />
+  const bgThemes = {
+    default: { bg:C.bg, grid:C.border, glow:C.blueGlow },
+    midnight: { bg:"#000008", grid:"rgba(20,0,60,0.6)", glow:"rgba(80,0,200,0.15)" },
+    forest: { bg:"#030e06", grid:"rgba(0,40,10,0.5)", glow:"rgba(0,120,40,0.12)" },
+    crimson: { bg:"#0a0003", grid:"rgba(60,0,10,0.5)", glow:"rgba(180,0,40,0.12)" },
+    slate: { bg:"#060810", grid:"rgba(20,30,60,0.5)", glow:"rgba(60,80,160,0.12)" },
+    obsidian: { bg:"#050505", grid:"rgba(30,30,30,0.4)", glow:"rgba(120,120,120,0.08)" },
+  };
+  const theme = bgThemes[bgTheme] || bgThemes.default;
+  const currentTab = tabs.find(t=>t.id===tab);
 
-      <header style={{ position: "sticky", top: 0, zIndex: 100, background: "rgba(3,3,10,0.97)", backdropFilter: "blur(20px)", borderBottom: `1px solid ${C.border}` }}>
-        <div style={{ maxWidth: 960, margin: "0 auto", padding: "0 20px" }}>
-          <div style={{ height: 52, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <svg width="44" height="30" viewBox="0 0 220 150" style={{ filter: "drop-shadow(0 0 8px rgba(200,160,40,0.7))" }}>
+  return (
+    <div style={{ minHeight:"100vh", background:theme.bg, position:"relative" }}>
+      <style>{css}</style>
+      <div style={{ position:"fixed", inset:0, backgroundImage:`linear-gradient(${theme.grid} 1px,transparent 1px),linear-gradient(90deg,${theme.grid} 1px,transparent 1px)`, backgroundSize:"60px 60px", pointerEvents:"none", zIndex:0, opacity:0.4 }} />
+      <div style={{ position:"fixed", top:0, left:"50%", transform:"translateX(-50%)", width:600, height:300, background:`radial-gradient(ellipse,${theme.glow} 0%,transparent 70%)`, pointerEvents:"none", zIndex:0 }} />
+
+      <header style={{ position:"sticky", top:0, zIndex:100, background:"rgba(3,3,10,0.97)", backdropFilter:"blur(20px)", borderBottom:`1px solid ${C.border}` }}>
+        <div style={{ maxWidth:960, margin:"0 auto", padding:"0 20px" }}>
+          <div style={{ height:52, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+              <div style={{ display:"flex", alignItems:"center" }}>
+                <svg width="44" height="30" viewBox="0 0 220 150" style={{ filter:"drop-shadow(0 0 8px rgba(200,160,40,0.7))" }}>
                   <defs>
                     <radialGradient id="ovalOut" cx="50%" cy="50%" r="50%">
-                      <stop offset="0%" stopColor="#c8860a" />
-                      <stop offset="40%" stopColor="#e8a020" />
-                      <stop offset="70%" stopColor="#b06010" />
-                      <stop offset="100%" stopColor="#301000" />
+                      <stop offset="0%" stopColor="#c8860a"/><stop offset="40%" stopColor="#e8a020"/><stop offset="70%" stopColor="#b06010"/><stop offset="100%" stopColor="#301000"/>
                     </radialGradient>
                     <radialGradient id="ovalIn" cx="50%" cy="50%" r="50%">
-                      <stop offset="0%" stopColor="#d4940e" />
-                      <stop offset="60%" stopColor="#c07808" />
-                      <stop offset="100%" stopColor="#1a0800" />
+                      <stop offset="0%" stopColor="#d4940e"/><stop offset="60%" stopColor="#c07808"/><stop offset="100%" stopColor="#1a0800"/>
                     </radialGradient>
                     <linearGradient id="ovalShine" x1="20%" y1="10%" x2="80%" y2="60%">
-                      <stop offset="0%" stopColor="rgba(255,220,100,0.55)" />
-                      <stop offset="100%" stopColor="rgba(255,180,20,0)" />
+                      <stop offset="0%" stopColor="rgba(255,220,100,0.55)"/><stop offset="100%" stopColor="rgba(255,180,20,0)"/>
                     </linearGradient>
-                    <clipPath id="innerOval"><ellipse cx="110" cy="75" rx="85" ry="50" /></clipPath>
+                    <clipPath id="innerOval"><ellipse cx="110" cy="75" rx="85" ry="50"/></clipPath>
                   </defs>
-                  {/* Outer oval border */}
-                  <ellipse cx="110" cy="75" rx="108" ry="68" fill="url(#ovalOut)" />
-                  {/* Black ring */}
-                  <ellipse cx="110" cy="75" rx="98" ry="60" fill="#0a0500" />
-                  {/* Inner gold oval */}
-                  <ellipse cx="110" cy="75" rx="85" ry="50" fill="url(#ovalIn)" />
-                  {/* Bat silhouette — black on gold */}
+                  <ellipse cx="110" cy="75" rx="108" ry="68" fill="url(#ovalOut)"/>
+                  <ellipse cx="110" cy="75" rx="98" ry="60" fill="#0a0500"/>
+                  <ellipse cx="110" cy="75" rx="85" ry="50" fill="url(#ovalIn)"/>
                   <g clipPath="url(#innerOval)" fill="#050200">
-                    {/* Body */}
-                    <ellipse cx="110" cy="82" rx="18" ry="22" />
-                    {/* Head / ears */}
-                    <polygon points="110,30 103,52 117,52" />
-                    <polygon points="98,36 88,52 108,52" />
-                    <polygon points="122,36 112,52 132,52" />
-                    {/* Left wing */}
-                    <path d="M92 68 C75 55 45 48 25 60 C35 60 45 64 50 70 C38 68 28 72 22 80 C34 76 46 75 55 78 C48 82 42 90 44 100 C50 92 58 86 68 82 C72 88 74 96 74 104 C76 96 78 88 82 82 C88 86 92 90 92 96 Z" />
-                    {/* Right wing */}
-                    <path d="M128 68 C145 55 175 48 195 60 C185 60 175 64 170 70 C182 68 192 72 198 80 C186 76 174 75 165 78 C172 82 178 90 176 100 C170 92 162 86 152 82 C148 88 146 96 146 104 C144 96 142 88 138 82 C132 86 128 90 128 96 Z" />
-                    {/* Bottom notch */}
-                    <path d="M102 104 C105 96 110 92 110 92 C110 92 115 96 118 104 C115 100 110 98 110 98 C110 98 105 100 102 104 Z" fill="#c07808" />
+                    <ellipse cx="110" cy="82" rx="18" ry="22"/>
+                    <polygon points="110,30 103,52 117,52"/>
+                    <polygon points="98,36 88,52 108,52"/>
+                    <polygon points="122,36 112,52 132,52"/>
+                    <path d="M92 68 C75 55 45 48 25 60 C35 60 45 64 50 70 C38 68 28 72 22 80 C34 76 46 75 55 78 C48 82 42 90 44 100 C50 92 58 86 68 82 C72 88 74 96 74 104 C76 96 78 88 82 82 C88 86 92 90 92 96 Z"/>
+                    <path d="M128 68 C145 55 175 48 195 60 C185 60 175 64 170 70 C182 68 192 72 198 80 C186 76 174 75 165 78 C172 82 178 90 176 100 C170 92 162 86 152 82 C148 88 146 96 146 104 C144 96 142 88 138 82 C132 86 128 90 128 96 Z"/>
+                    <path d="M102 104 C105 96 110 92 110 92 C110 92 115 96 118 104 C115 100 110 98 110 98 C110 98 105 100 102 104 Z" fill="#c07808"/>
                   </g>
-                  {/* Shine overlay */}
-                  <ellipse cx="110" cy="75" rx="85" ry="50" fill="url(#ovalShine)" />
-                  {/* Edge glint */}
-                  <ellipse cx="110" cy="75" rx="108" ry="68" fill="none" stroke="rgba(255,220,80,0.3)" strokeWidth="2" />
+                  <ellipse cx="110" cy="75" rx="85" ry="50" fill="url(#ovalShine)"/>
+                  <ellipse cx="110" cy="75" rx="108" ry="68" fill="none" stroke="rgba(255,220,80,0.3)" strokeWidth="2"/>
                 </svg>
               </div>
-              <div><div style={{ fontSize: 10, letterSpacing: "0.12em", color: C.muted, fontFamily: "'JetBrains Mono',monospace" }}>{getGreeting()},</div><div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.1em", background: C.chrome, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>VINCE</div></div>
+              <div>
+                <div style={{ fontSize:10, letterSpacing:"0.12em", color:C.muted, fontFamily:"'JetBrains Mono',monospace" }}>{getGreeting()},</div>
+                <div style={{ fontSize:14, fontWeight:800, letterSpacing:"0.1em", background:C.chrome, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>VINCE</div>
+              </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
               <FortuneCookie />
-              <Btn size="sm" variant="primary" onClick={() => setShowReport(true)}>Report</Btn>
+              <Btn size="sm" variant="primary" onClick={()=>setShowReport(true)}>Report</Btn>
+              {/* Theme picker */}
+              <div style={{ position:"relative" }} id="theme-picker">
+                <button onClick={()=>document.getElementById("theme-dropdown").classList.toggle("open")} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.muted, borderRadius:4, padding:"4px 8px", cursor:"pointer", fontSize:11 }} title="Change background">🎨</button>
+                <div id="theme-dropdown" style={{ position:"absolute", right:0, top:"calc(100% + 6px)", background:"#0a0a1e", border:`1px solid ${C.borderHi}`, borderRadius:8, padding:10, zIndex:200, display:"none", minWidth:140 }}>
+                  <style>{`#theme-dropdown.open{display:block!important}`}</style>
+                  <div style={{ fontSize:10, color:C.dim, marginBottom:6, letterSpacing:"0.1em" }}>BACKGROUND</div>
+                  {Object.keys(bgThemes).map(k=>(
+                    <button key={k} onClick={()=>{setBgTheme(k);document.getElementById("theme-dropdown").classList.remove("open");}} style={{ display:"block", width:"100%", textAlign:"left", padding:"5px 8px", borderRadius:3, border:`1px solid ${bgTheme===k?C.borderHi:C.border}`, background:bgTheme===k?C.accentGlow:"transparent", color:bgTheme===k?C.accent:C.muted, fontSize:11, cursor:"pointer", marginBottom:3, textTransform:"capitalize" }}>{k}</button>
+                  ))}
+                </div>
+              </div>
               <Btn size="sm" variant="ghost" onClick={logout}>Exit</Btn>
             </div>
           </div>
           {/* Desktop nav */}
-          <div style={{ display: "flex", borderTop: `1px solid ${C.border}`, overflowX: "auto" }} id="desktop-nav">
-            {tabs.map(t => <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "10px 14px", fontSize: 11, fontWeight: 500, cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap", background: "transparent", border: "none", borderBottom: `2px solid ${tab === t.id ? C.accent : "transparent"}`, color: tab === t.id ? C.accent : C.muted, fontFamily: "inherit", letterSpacing: "0.04em" }}>{t.label}</button>)}
+          <div style={{ display:"flex", borderTop:`1px solid ${C.border}`, overflowX:"auto" }} id="desktop-nav">
+            {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{ padding:"10px 14px", fontSize:11, fontWeight:500, cursor:"pointer", transition:"all 0.15s", whiteSpace:"nowrap", background:"transparent", border:"none", borderBottom:`2px solid ${tab===t.id?C.accent:"transparent"}`, color:tab===t.id?C.accent:C.muted, fontFamily:"inherit", letterSpacing:"0.04em" }}>{t.label}</button>)}
           </div>
         </div>
       </header>
 
-      <main style={{ maxWidth: 960, margin: "0 auto", padding: "24px 20px 120px", position: "relative", zIndex: 1 }}>
-        {tab === "home" && <Home userId={user.id} onNavigate={setTab} />}
-        {tab === "fitness" && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 14 }} className="fade-up"><Workout userId={user.id} /><Water userId={user.id} /><Health userId={user.id} /></div>}
-        {tab === "food" && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 14 }} className="fade-up"><FoodPhoto userId={user.id} /><Calories userId={user.id} /></div>}
-        {tab === "logs" && <Logs userId={user.id} />}
-        {tab === "goals" && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 14 }} className="fade-up"><GoalTracker userId={user.id} /></div>}
-        {tab === "focus" && <FocusTimer userId={user.id} />}
-        {tab === "bible" && <Bible userId={user.id} />}
-        {tab === "notes" && <NotesAndJournal userId={user.id} />}
-        {tab === "archive" && <ReportArchive userId={user.id} />}
+      <main style={{ maxWidth:960, margin:"0 auto", padding:"24px 20px 120px", position:"relative", zIndex:1 }}>
+        {tab==="home"&&<Home userId={user.id} onNavigate={setTab}/>}
+        {tab==="fitness"&&<div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))", gap:14 }} className="fade-up"><Workout userId={user.id}/><Water userId={user.id}/><Health userId={user.id}/></div>}
+        {tab==="food"&&<div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))", gap:14 }} className="fade-up"><FoodPhoto userId={user.id}/><Calories userId={user.id}/></div>}
+        {tab==="logs"&&<Logs userId={user.id}/>}
+        {tab==="goals"&&<div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))", gap:14 }} className="fade-up"><GoalTracker userId={user.id}/></div>}
+        {tab==="focus"&&<FocusTimer userId={user.id}/>}
+        {tab==="bible"&&<Bible userId={user.id}/>}
+        {tab==="notes"&&<NotesAndJournal userId={user.id}/>}
+        {tab==="archive"&&<ReportArchive userId={user.id}/>}
       </main>
 
-      {/* Mobile bottom nav — scrollable, larger tap targets */}
-      <nav style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(3,3,10,0.98)", backdropFilter: "blur(20px)", borderTop: `1px solid ${C.border}`, zIndex: 100, display: "none", overflowX: "auto", WebkitOverflowScrolling: "touch", padding: "8px 0 max(10px, env(safe-area-inset-bottom))", scrollbarWidth: "none" }} id="mobile-nav">
-        <div style={{ display: "flex", minWidth: "max-content", padding: "0 8px" }}>
-          {tabs.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{ flexShrink: 0, padding: "6px 14px", fontSize: 11, fontWeight: 500, cursor: "pointer", background: tab === t.id ? C.accentGlow : "transparent", border: `1px solid ${tab === t.id ? C.borderHi : "transparent"}`, borderRadius: 20, color: tab === t.id ? C.accent : C.dim, fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, transition: "all 0.15s", letterSpacing: "0.04em", margin: "0 3px" }}>
-              <div style={{ width: 3, height: 3, borderRadius: "50%", background: tab === t.id ? C.accent : "transparent", transition: "all 0.15s" }} />
-              {t.label}
-            </button>
-          ))}
+      {/* ── MOBILE: hamburger dropdown nav ── */}
+      <div id="mobile-nav-container" style={{ display:"none" }}>
+        {/* Fixed bottom bar with hamburger */}
+        <div style={{ position:"fixed", bottom:0, left:0, right:0, background:"rgba(3,3,10,0.98)", backdropFilter:"blur(20px)", borderTop:`1px solid ${C.border}`, zIndex:100, padding:"0 16px", paddingBottom:"max(12px, env(safe-area-inset-bottom))", display:"flex", alignItems:"center", justifyContent:"space-between", height:56 }}>
+          <div style={{ fontSize:12, fontWeight:600, color:C.accent, letterSpacing:"0.04em" }}>{currentTab?.label||"Home"}</div>
+          <button onClick={()=>setMobileMenuOpen(o=>!o)} style={{ background:mobileMenuOpen?C.accentGlow:"transparent", border:`1px solid ${mobileMenuOpen?C.borderHi:C.border}`, borderRadius:6, color:mobileMenuOpen?C.accent:C.muted, padding:"8px 14px", cursor:"pointer", display:"flex", flexDirection:"column", gap:4, alignItems:"center", justifyContent:"center" }}>
+            <div style={{ width:18, height:1.5, background:mobileMenuOpen?C.accent:C.muted, borderRadius:2, transition:"all 0.2s", transform:mobileMenuOpen?"rotate(45deg) translate(4px,4px)":"none" }} />
+            <div style={{ width:18, height:1.5, background:mobileMenuOpen?C.accent:C.muted, borderRadius:2, transition:"all 0.2s", opacity:mobileMenuOpen?0:1 }} />
+            <div style={{ width:18, height:1.5, background:mobileMenuOpen?C.accent:C.muted, borderRadius:2, transition:"all 0.2s", transform:mobileMenuOpen?"rotate(-45deg) translate(4px,-4px)":"none" }} />
+          </button>
         </div>
-      </nav>
+
+        {/* Dropdown menu */}
+        {mobileMenuOpen && (
+          <div style={{ position:"fixed", bottom:56, left:0, right:0, zIndex:99, background:"rgba(3,3,10,0.98)", backdropFilter:"blur(20px)", borderTop:`1px solid ${C.border}`, padding:"8px 0" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:2, padding:"0 8px" }}>
+              {tabs.map(t=>(
+                <button key={t.id} onClick={()=>{setTab(t.id);setMobileMenuOpen(false);}} style={{ padding:"12px 8px", fontSize:12, fontWeight:500, cursor:"pointer", background:tab===t.id?C.accentGlow:"transparent", border:`1px solid ${tab===t.id?C.borderHi:"transparent"}`, borderRadius:6, color:tab===t.id?C.accent:C.muted, fontFamily:"inherit", textAlign:"center", transition:"all 0.15s", margin:2 }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       <style>{`
-        #mobile-nav::-webkit-scrollbar { display: none; }
         @media (max-width: 680px) {
-          #mobile-nav { display: block !important; }
+          #mobile-nav-container { display: block !important; }
           #desktop-nav { display: none !important; }
-          main { padding-left: 14px !important; padding-right: 14px !important; padding-bottom: 120px !important; }
+          main { padding-left: 14px !important; padding-right: 14px !important; padding-bottom: 80px !important; }
         }
       `}</style>
 
-      {showReport && <EveningReport onClose={() => setShowReport(false)} userId={user.id} />}
+      {showReport&&<EveningReport onClose={()=>setShowReport(false)} userId={user.id}/>}
     </div>
   );
 }
