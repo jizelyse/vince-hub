@@ -3,7 +3,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY || "";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
+const GEMINI_MODEL = "gemini-1.5-flash";
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
 const VINCE_EMAIL = "vince@vincehub.com";
 
 // ─── FORTUNES (expanded) ──────────────────────────────────────────────────────
@@ -169,11 +170,13 @@ const callAI = async (prompt, system = "") => {
 
 const callAIVision = async (base64, mimeType, prompt) => {
   try {
+    if (!GEMINI_KEY) return "[AI unavailable: no API key set]";
     const body = { contents: [{ role: "user", parts: [{ inline_data: { mime_type: mimeType, data: base64 } }, { text: prompt }] }] };
     const res = await fetch(GEMINI_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const data = await res.json();
-    return data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
-  } catch { return ""; }
+    if (data.error) return `[AI error: ${data.error.message || "unknown"}]`;
+    return data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "[No response from AI]";
+  } catch (e) { return `[AI request failed: ${e.message}]`; }
 };
 
 const parseJSON = str => { try { return JSON.parse(str.replace(/```json|```/g, "").trim()); } catch { return null; } };
@@ -295,40 +298,42 @@ const StatBox = ({ label, value, color = C.text }) => (
 );
 
 // ─── FORTUNE COOKIE (centered popup) ─────────────────────────────────────────
-const FortuneCookie = () => {
-  const [open, setOpen] = useState(false);
+const FortuneCookie = ({ onOpen }) => (
+  <button onClick={onOpen} style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 4, color: C.muted, fontSize: 11, padding: "4px 10px", cursor: "pointer", fontFamily: "'JetBrains Mono',monospace", letterSpacing: "0.08em", transition: "all 0.2s" }}
+    onMouseEnter={e => { e.currentTarget.style.borderColor = C.borderHi; e.currentTarget.style.color = C.silver; }}
+    onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}>
+    Fortune
+  </button>
+);
+
+const FortuneModal = ({ onClose }) => {
   const [cracked, setCracked] = useState(false);
   const fortune = getDailyFortune();
   return (
-    <>
-      <button onClick={() => { setOpen(true); setCracked(false); }} style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 4, color: C.muted, fontSize: 11, padding: "4px 10px", cursor: "pointer", fontFamily: "'JetBrains Mono',monospace", letterSpacing: "0.08em", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.borderColor = C.borderHi; e.currentTarget.style.color = C.silver; }} onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}>Fortune</button>
-      {open && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.93)", backdropFilter: "blur(12px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 20 }} className="fade-in" onClick={() => !cracked && setCracked(true)}>
-          <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }} onClick={e => e.stopPropagation()}>
-            {!cracked ? (
-              <div style={{ cursor: "pointer" }} onClick={() => setCracked(true)}>
-                <svg width="140" height="90" viewBox="0 0 140 90" style={{ filter: `drop-shadow(0 0 20px ${C.blueGlow})` }}>
-                  <defs><linearGradient id="cg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#2a3060" /><stop offset="50%" stopColor="#3a4080" /><stop offset="100%" stopColor="#1a2040" /></linearGradient></defs>
-                  <ellipse cx="70" cy="45" rx="65" ry="35" fill="url(#cg)" stroke={C.accent} strokeWidth="1" opacity="0.85" />
-                  <ellipse cx="70" cy="45" rx="48" ry="24" fill="none" stroke={C.accent} strokeWidth="0.5" opacity="0.4" />
-                  <line x1="70" y1="12" x2="70" y2="78" stroke={C.accent} strokeWidth="0.5" opacity="0.3" />
-                </svg>
-                <div style={{ color: C.muted, fontSize: 13, marginTop: 16, fontFamily: "'JetBrains Mono',monospace" }}>Tap to crack open</div>
-              </div>
-            ) : (
-              <div className="fade-up">
-                <div style={{ padding: "24px 28px", background: C.surface, border: `1px solid ${C.borderHi}`, borderRadius: 8, boxShadow: `0 0 40px ${C.blueGlow}`, marginBottom: 16 }}>
-                  <div style={{ fontSize: 10, letterSpacing: "0.15em", color: C.muted, fontFamily: "'JetBrains Mono',monospace", marginBottom: 14 }}>DAILY FORTUNE</div>
-                  <div style={{ fontSize: 18, fontWeight: 400, color: C.text, lineHeight: 1.7, marginBottom: 16 }}>"{fortune.text}"</div>
-                  <div style={{ fontSize: 12, color: C.accent, fontFamily: "'JetBrains Mono',monospace" }}>— {fortune.source}</div>
-                </div>
-                <button onClick={() => setOpen(false)} style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.muted, padding: "8px 24px", borderRadius: 4, cursor: "pointer", fontSize: 12, fontFamily: "'JetBrains Mono',monospace" }}>Close</button>
-              </div>
-            )}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.93)", backdropFilter: "blur(12px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 20 }} className="fade-in" onClick={() => !cracked ? setCracked(true) : onClose()}>
+      <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }} onClick={e => e.stopPropagation()}>
+        {!cracked ? (
+          <div style={{ cursor: "pointer" }} onClick={() => setCracked(true)}>
+            <svg width="140" height="90" viewBox="0 0 140 90" style={{ filter: `drop-shadow(0 0 20px ${C.blueGlow})` }}>
+              <defs><linearGradient id="cg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#2a3060" /><stop offset="50%" stopColor="#3a4080" /><stop offset="100%" stopColor="#1a2040" /></linearGradient></defs>
+              <ellipse cx="70" cy="45" rx="65" ry="35" fill="url(#cg)" stroke={C.accent} strokeWidth="1" opacity="0.85" />
+              <ellipse cx="70" cy="45" rx="48" ry="24" fill="none" stroke={C.accent} strokeWidth="0.5" opacity="0.4" />
+              <line x1="70" y1="12" x2="70" y2="78" stroke={C.accent} strokeWidth="0.5" opacity="0.3" />
+            </svg>
+            <div style={{ color: C.muted, fontSize: 13, marginTop: 16, fontFamily: "'JetBrains Mono',monospace" }}>Tap to crack open</div>
           </div>
-        </div>
-      )}
-    </>
+        ) : (
+          <div className="fade-up">
+            <div style={{ padding: "28px 32px", background: C.surface, border: `1px solid ${C.borderHi}`, borderRadius: 10, boxShadow: `0 0 50px ${C.blueGlow}`, marginBottom: 20 }}>
+              <div style={{ fontSize: 10, letterSpacing: "0.15em", color: C.muted, fontFamily: "'JetBrains Mono',monospace", marginBottom: 16 }}>DAILY FORTUNE</div>
+              <div style={{ fontSize: 19, fontWeight: 400, color: C.text, lineHeight: 1.75, marginBottom: 18, fontStyle: "italic" }}>"{fortune.text}"</div>
+              <div style={{ fontSize: 12, color: C.accent, fontFamily: "'JetBrains Mono',monospace" }}>— {fortune.source}</div>
+            </div>
+            <button onClick={onClose} style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.muted, padding: "9px 28px", borderRadius: 4, cursor: "pointer", fontSize: 12, fontFamily: "'JetBrains Mono',monospace" }}>Close</button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -543,6 +548,7 @@ const Calories = ({ userId }) => {
   const aiGuess = async () => {
     if (!food.trim()) return; setLoading(true); setHint("");
     const res = await callAI(`Estimate the calories and protein for: "${food}". Typical Filipino or Asian home serving. Respond with ONLY valid JSON: {"calories":number,"protein":number,"note":"brief"}`, "Nutrition expert. Valid JSON only.");
+    if (res.startsWith("[AI")) { setHint(res); setLoading(false); return; }
     const p = parseJSON(res);
     if (p && typeof p.calories === "number") { setCals(String(p.calories)); setProt(String(p.protein || 0)); setHint(p.note || ""); }
     else setHint("Could not estimate — fill manually.");
@@ -579,7 +585,8 @@ const FoodPhoto = ({ userId }) => {
     if (!img) return; setLoading(true); setResult(null);
     const base64 = img.split(",")[1]; const mimeType = img.split(";")[0].split(":")[1];
     const res = await callAIVision(base64, mimeType, `Analyze this food.${note ? ` Context: "${note}"` : ""} Reply ONLY valid JSON: {"food":"name","calories":number,"protein":number,"carbs":number,"fat":number,"note":"brief","followUp":"question if uncertain, else empty"}`);
-    setResult(parseJSON(res) || { food: "Unknown", calories: 0, protein: 0, carbs: 0, fat: 0, note: "Could not analyze." });
+    if (res.startsWith("[AI")) { setResult({ food: "Error", calories: 0, protein: 0, carbs: 0, fat: 0, note: res }); setLoading(false); return; }
+    setResult(parseJSON(res) || { food: "Unknown", calories: 0, protein: 0, carbs: 0, fat: 0, note: "Could not parse response. Try again." });
     setLoading(false);
   };
   return (
@@ -614,9 +621,10 @@ const GoalTracker = ({ userId }) => {
   const create = async () => {
     if (!input.trim()) return; setLoading(true); setError("");
     const res = await callAI(`Goal: "${input.trim()}". Break into 5-7 concrete actionable steps with realistic time estimates. Respond ONLY with valid JSON: {"steps":[{"text":"step","time":"time estimate"}],"totalTime":"total"}`, "Life coach. Valid JSON only. No markdown.");
+    if (res.startsWith("[AI")) { setError(res); setLoading(false); return; }
     const parsed = parseJSON(res);
     if (parsed && Array.isArray(parsed.steps) && parsed.steps.length > 0) { setGoal({ text: input.trim(), totalTime: parsed.totalTime || "TBD", created: new Date().toLocaleDateString() }); setSteps(parsed.steps.map((s, i) => ({ ...s, id: i, done: false }))); setInput(""); }
-    else setError("Could not generate. Try rephrasing.");
+    else setError("Could not generate steps — try rephrasing your goal.");
     setLoading(false);
   };
   const toggle = id => setSteps(steps.map(s => s.id === id ? { ...s, done: !s.done } : s));
@@ -661,23 +669,16 @@ const LogBox = ({ logKey, title, onDelete, userId }) => {
   const save = () => { if (!draft.title.trim()) return; setEntries([{ ...draft, id: Date.now(), date: new Date().toLocaleDateString() }, ...entries]); setDraft({ title: "", comment: "", rating: 0, poster: "" }); setAdding(false); };
   return (
     <div style={{ marginBottom: 10, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", background: C.surface }}>
-      {/* Accordion header — always visible, click to expand */}
-      <div onClick={() => setOpen(o => !o)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", cursor: "pointer", userSelect: "none", transition: "background 0.15s" }}
-        onMouseEnter={e => e.currentTarget.style.background = C.surface2}
-        onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+      <div onClick={() => setOpen(o => !o)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", cursor: "pointer", userSelect: "none" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{title}</div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>{title}</div>
           <div style={{ fontSize: 10, color: C.muted, background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "2px 8px", fontFamily: "'JetBrains Mono',monospace" }}>{entries.length}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {onDelete && <span onClick={e => { e.stopPropagation(); if (window.confirm("Delete this log?")) onDelete(); }} style={{ fontSize: 10, color: "#f08080", cursor: "pointer" }}>Delete</span>}
-          <svg width="14" height="14" viewBox="0 0 14 14" style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", color: C.muted }}>
-            <path d="M2 4l5 5 5-5" stroke={C.muted} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+          {onDelete && <span onClick={e => { e.stopPropagation(); onDelete(); }} style={{ fontSize: 10, color: "#f08080", cursor: "pointer" }}>Delete</span>}
+          <svg width="14" height="14" viewBox="0 0 14 14" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}><path d="M2 4l5 5 5-5" stroke={C.muted} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </div>
       </div>
-
-      {/* Expanded content */}
       {open && (
         <div style={{ borderTop: `1px solid ${C.border}`, padding: "14px 18px" }}>
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
@@ -685,7 +686,7 @@ const LogBox = ({ logKey, title, onDelete, userId }) => {
           </div>
           {adding && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14, padding: 14, background: C.surface2, borderRadius: 8, border: `1px solid ${C.border}` }}>
-              <div onClick={() => fileRef.current.click()} style={{ width: "100%", height: 90, border: `2px dashed ${C.border}`, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", overflow: "hidden", background: C.surface }}>
+              <div onClick={() => fileRef.current.click()} style={{ width: "100%", height: 90, border: `2px dashed ${C.border}`, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", overflow: "hidden" }}>
                 {draft.poster ? <img src={draft.poster} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: C.muted, fontSize: 12 }}>Upload poster / cover</span>}
               </div>
               <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
@@ -698,8 +699,13 @@ const LogBox = ({ logKey, title, onDelete, userId }) => {
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {entries.map(e => (
               <div key={e.id} style={{ display: "flex", gap: 10, padding: 12, background: C.surface2, borderRadius: 8, border: `1px solid ${C.border}` }}>
-                {e.poster && <img src={e.poster} alt="" style={{ width: 42, height: 60, objectFit: "cover", borderRadius: 4, flexShrink: 0, border: `1px solid ${C.border}` }} />}
-                <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{e.title}</div><div style={{ display: "flex", gap: 2, marginBottom: 4 }}>{[1,2,3,4,5].map(s => <svg key={s} width="10" height="10" viewBox="0 0 24 24" fill={s <= e.rating ? C.silver : "none"} stroke={s <= e.rating ? C.silver : C.dim} strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>)}</div>{e.comment && <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>{e.comment}</div>}<div style={{ fontSize: 10, color: C.dim, marginTop: 4 }}>{e.date}</div></div>
+                {e.poster && <img src={e.poster} alt="" style={{ width: 42, height: 60, objectFit: "cover", borderRadius: 4, flexShrink: 0 }} />}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{e.title}</div>
+                  <div style={{ display: "flex", gap: 2, marginBottom: 4 }}>{[1,2,3,4,5].map(s => <svg key={s} width="10" height="10" viewBox="0 0 24 24" fill={s <= e.rating ? C.silver : "none"} stroke={s <= e.rating ? C.silver : C.dim} strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>)}</div>
+                  {e.comment && <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>{e.comment}</div>}
+                  <div style={{ fontSize: 10, color: C.dim, marginTop: 4 }}>{e.date}</div>
+                </div>
                 <span onClick={() => setEntries(entries.filter(x => x.id !== e.id))} style={{ color: C.dim, cursor: "pointer", alignSelf: "flex-start", fontSize: 16 }}>×</span>
               </div>
             ))}
@@ -715,403 +721,666 @@ const Logs = ({ userId }) => {
   const [logDefs, setLogDefs] = useSynced("log_definitions", [{ key: "film", title: "Film Log" }, { key: "book", title: "Book & Manga Log" }], userId);
   const [newName, setNewName] = useState(""); const [adding, setAdding] = useState(false);
   const addLog = () => { if (!newName.trim()) return; setLogDefs([...logDefs, { key: `custom_${Date.now()}`, title: newName.trim() }]); setNewName(""); setAdding(false); };
-  const deleteLog = key => setLogDefs(logDefs.filter(l => l.key !== key));
   return (
     <div className="fade-up">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}><div style={{ fontSize: 20, fontWeight: 700 }}>Logs</div><Btn size="sm" variant="primary" onClick={() => setAdding(!adding)}>{adding ? "Cancel" : "+ New Log"}</Btn></div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div style={{ fontSize: 20, fontWeight: 700 }}>Logs</div>
+        <Btn size="sm" variant="primary" onClick={() => setAdding(!adding)}>{adding ? "Cancel" : "+ New Log"}</Btn>
+      </div>
       {adding && <Card style={{ marginBottom: 14 }}><Label>New Log Name</Label><div style={{ display: "flex", gap: 8 }}><Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Game Log, Music Log..." onKeyDown={e => e.key === "Enter" && addLog()} style={{ flex: 1 }} /><Btn size="sm" variant="primary" onClick={addLog}>Create</Btn></div></Card>}
-      {logDefs.map(l => <LogBox key={l.key} logKey={l.key} title={l.title} onDelete={l.key.startsWith("custom_") ? () => deleteLog(l.key) : null} userId={userId} />)}
+      {logDefs.map(l => <LogBox key={l.key} logKey={l.key} title={l.title} onDelete={l.key.startsWith("custom_") ? () => setLogDefs(logDefs.filter(x => x.key !== l.key)) : null} userId={userId} />)}
     </div>
   );
 };
 
-// ─── OBSIDIAN NOTES + JOURNAL ────────────────────────────────────────────────
+// ─── FOCUS TIMER ─────────────────────────────────────────────────────────────
+const FocusTimer = ({ userId }) => {
+  const [sessions, setSessions] = useSynced("focus_sessions", [], userId);
+  const [duration, setDuration] = useState(25);
+  const [timeLeft, setTimeLeft] = useState(25 * 60);
+  const [running, setRunning] = useState(false);
+  const [label, setLabel] = useState("");
+  const [phase, setPhase] = useState("work"); // work | break
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    if (running) {
+      intervalRef.current = setInterval(() => {
+        setTimeLeft(t => {
+          if (t <= 1) {
+            clearInterval(intervalRef.current);
+            setRunning(false);
+            if (phase === "work") {
+              const session = { id: Date.now(), label: label || "Focus Session", duration, date: new Date().toLocaleDateString(), time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
+              setSessions(prev => [session, ...prev.slice(0, 49)]);
+            }
+            setPhase(p => p === "work" ? "break" : "work");
+            const next = phase === "work" ? 5 * 60 : duration * 60;
+            return next;
+          }
+          return t - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(intervalRef.current);
+  }, [running, phase, duration, label]);
+
+  const mins = String(Math.floor(timeLeft / 60)).padStart(2, "0");
+  const secs = String(timeLeft % 60).padStart(2, "0");
+  const pct = phase === "work" ? ((duration * 60 - timeLeft) / (duration * 60)) * 100 : ((5 * 60 - timeLeft) / (5 * 60)) * 100;
+
+  const reset = () => { clearInterval(intervalRef.current); setRunning(false); setPhase("work"); setTimeLeft(duration * 60); };
+
+  const totalSessions = sessions.length;
+  const todaySessions = sessions.filter(s => s.date === new Date().toLocaleDateString()).length;
+  const unlocked = SOLAR_OBJECTS.filter(o => totalSessions >= o.sessionsNeeded);
+  const nextObj = SOLAR_OBJECTS.find(o => totalSessions < o.sessionsNeeded);
+
+  return (
+    <div className="fade-up" style={{ maxWidth: 560, margin: "0 auto" }}>
+      <Card>
+        <Label>Focus Timer</Label>
+        {/* Timer ring */}
+        <div style={{ display: "flex", justifyContent: "center", margin: "20px 0" }}>
+          <div style={{ position: "relative", width: 200, height: 200 }}>
+            <svg width="200" height="200" viewBox="0 0 200 200" style={{ transform: "rotate(-90deg)" }}>
+              <circle cx="100" cy="100" r="88" fill="none" stroke={C.surface2} strokeWidth="10" />
+              <circle cx="100" cy="100" r="88" fill="none" stroke={phase === "work" ? C.accent : "#50c878"} strokeWidth="10"
+                strokeDasharray={`${2 * Math.PI * 88}`} strokeDashoffset={`${2 * Math.PI * 88 * (1 - pct / 100)}`}
+                strokeLinecap="round" style={{ transition: "stroke-dashoffset 1s linear" }} />
+            </svg>
+            <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ fontSize: 10, letterSpacing: "0.15em", color: phase === "work" ? C.accent : "#50c878", marginBottom: 4 }}>{phase === "work" ? "FOCUS" : "BREAK"}</div>
+              <div style={{ fontSize: 42, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: C.text, letterSpacing: "-0.02em" }}>{mins}:{secs}</div>
+            </div>
+          </div>
+        </div>
+
+        <Input value={label} onChange={e => setLabel(e.target.value)} placeholder="Session label (optional)..." style={{ marginBottom: 12 }} />
+
+        {/* Duration selector */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+          {[15, 25, 30, 45, 60].map(d => (
+            <button key={d} onClick={() => { setDuration(d); if (!running) setTimeLeft(d * 60); }} style={{ padding: "5px 14px", borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", background: duration === d ? C.accentGlow : "transparent", border: `1px solid ${duration === d ? C.borderHi : C.border}`, color: duration === d ? C.accent : C.muted }}>{d}m</button>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+          <Btn variant="primary" full onClick={() => setRunning(r => !r)}>{running ? "Pause" : timeLeft < duration * 60 ? "Resume" : "Start"}</Btn>
+          <Btn variant="ghost" onClick={reset}>Reset</Btn>
+        </div>
+
+        {/* Stats row */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+          <StatBox label="TODAY" value={todaySessions} color={C.accent} />
+          <StatBox label="TOTAL" value={totalSessions} color={C.silver} />
+          <StatBox label="NEXT" value={nextObj ? `${nextObj.sessionsNeeded - totalSessions} away` : "Max!"} color={C.muted} />
+        </div>
+
+        {/* Solar system unlocks */}
+        {unlocked.length > 0 && (
+          <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
+            <div style={{ fontSize: 10, letterSpacing: "0.12em", color: C.muted, marginBottom: 10 }}>UNLOCKED</div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {unlocked.map(obj => (
+                <div key={obj.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                  <SmallPlanet color={obj.color} size={32} glow={obj.color} />
+                  <div style={{ fontSize: 9, color: C.muted, textAlign: "center" }}>{obj.name}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Recent sessions */}
+        {sessions.length > 0 && (
+          <div style={{ marginTop: 16, borderTop: `1px solid ${C.border}`, paddingTop: 14, maxHeight: 180, overflowY: "auto" }}>
+            <div style={{ fontSize: 10, letterSpacing: "0.12em", color: C.muted, marginBottom: 8 }}>RECENT SESSIONS</div>
+            {sessions.slice(0, 10).map(s => (
+              <div key={s.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: `1px solid rgba(30,60,120,0.1)`, fontSize: 12 }}>
+                <span style={{ color: C.text }}>{s.label}</span>
+                <span style={{ color: C.dim, fontFamily: "'JetBrains Mono',monospace" }}>{s.duration}m · {s.time}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// ─── BIBLE ───────────────────────────────────────────────────────────────────
+const BIBLE_BOOKS = ["Genesis","Exodus","Leviticus","Numbers","Deuteronomy","Joshua","Judges","Ruth","1 Samuel","2 Samuel","1 Kings","2 Kings","1 Chronicles","2 Chronicles","Ezra","Nehemiah","Esther","Job","Psalms","Proverbs","Ecclesiastes","Song of Solomon","Isaiah","Jeremiah","Lamentations","Ezekiel","Daniel","Hosea","Joel","Amos","Obadiah","Jonah","Micah","Nahum","Habakkuk","Zephaniah","Haggai","Zechariah","Malachi","Matthew","Mark","Luke","John","Acts","Romans","1 Corinthians","2 Corinthians","Galatians","Ephesians","Philippians","Colossians","1 Thessalonians","2 Thessalonians","1 Timothy","2 Timothy","Titus","Philemon","Hebrews","James","1 Peter","2 Peter","1 John","2 John","3 John","Jude","Revelation"];
+
+const Bible = ({ userId }) => {
+  const [notes, setNotes] = useSynced("bible_notes", [], userId);
+  const [book, setBook] = useState("John");
+  const [chapter, setChapter] = useState("1");
+  const [verse, setVerse] = useState("");
+  const [noteText, setNoteText] = useState("");
+  const [verseText, setVerseText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [reflection, setReflection] = useState("");
+  const [view, setView] = useState("lookup"); // lookup | notes
+
+  const lookup = async () => {
+    if (!book || !chapter) return;
+    setLoading(true); setVerseText(""); setReflection("");
+    const ref = verse ? `${book} ${chapter}:${verse}` : `${book} ${chapter}`;
+    const res = await callAI(`Give me the exact text of ${ref} from the NIV Bible. Return ONLY the scripture text, no headers or attribution.`, "Biblical scholar. Return only scripture text.");
+    setVerseText(res.startsWith("[") ? "Could not load — check your API key or try again." : res);
+    setLoading(false);
+  };
+
+  const reflect = async () => {
+    if (!verseText) return;
+    setAiLoading(true); setReflection("");
+    const ref = verse ? `${book} ${chapter}:${verse}` : `${book} ${chapter}`;
+    const res = await callAI(`Provide a brief, personal, practical reflection on ${ref}: "${verseText.slice(0, 200)}". 3-4 sentences. How does this apply to daily life and building character?`, "Thoughtful Christian mentor. Warm and direct.");
+    setReflection(res);
+    setAiLoading(false);
+  };
+
+  const saveNote = () => {
+    if (!noteText.trim()) return;
+    const ref = verse ? `${book} ${chapter}:${verse}` : `${book} ${chapter}`;
+    setNotes([{ id: Date.now(), ref, verse: verseText, note: noteText, date: new Date().toLocaleDateString() }, ...notes]);
+    setNoteText("");
+  };
+
+  return (
+    <div className="fade-up" style={{ maxWidth: 680, margin: "0 auto" }}>
+      {/* Sub-tab */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
+        {["lookup", "notes"].map(v => (
+          <button key={v} onClick={() => setView(v)} style={{ padding: "5px 16px", borderRadius: 4, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 500, background: view === v ? C.accentGlow : "transparent", color: view === v ? C.accent : C.muted, borderBottom: `2px solid ${view === v ? C.accent : "transparent"}`, textTransform: "capitalize" }}>{v === "lookup" ? "Look Up" : "My Notes"}</button>
+        ))}
+      </div>
+
+      {view === "lookup" && (
+        <Card>
+          <Label>Bible Lookup</Label>
+          {/* Selectors */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            <select value={book} onChange={e => setBook(e.target.value)} style={{ flex: 2, background: C.surface2, border: `1px solid ${C.border}`, color: C.text, borderRadius: 4, padding: "8px 10px", fontSize: 13, fontFamily: "inherit", minWidth: 120 }}>
+              {BIBLE_BOOKS.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+            <input type="number" value={chapter} onChange={e => setChapter(e.target.value)} placeholder="Ch." min="1" style={{ flex: 1, background: C.surface2, border: `1px solid ${C.border}`, color: C.text, borderRadius: 4, padding: "8px 10px", fontSize: 13, fontFamily: "inherit", minWidth: 60 }} />
+            <input type="number" value={verse} onChange={e => setVerse(e.target.value)} placeholder="Vs." min="1" style={{ flex: 1, background: C.surface2, border: `1px solid ${C.border}`, color: C.text, borderRadius: 4, padding: "8px 10px", fontSize: 13, fontFamily: "inherit", minWidth: 60 }} />
+            <Btn variant="primary" onClick={lookup} disabled={loading}>{loading ? <Spinner /> : "Look Up"}</Btn>
+          </div>
+
+          {verseText && !verseText.startsWith("Could") && (
+            <div style={{ padding: "16px 20px", background: C.surface2, borderRadius: 8, border: `1px solid ${C.border}`, marginBottom: 14 }}>
+              <div style={{ fontSize: 10, letterSpacing: "0.12em", color: C.accent, fontFamily: "'JetBrains Mono',monospace", marginBottom: 10 }}>
+                {verse ? `${book.toUpperCase()} ${chapter}:${verse}` : `${book.toUpperCase()} ${chapter}`} — NIV
+              </div>
+              <div style={{ fontSize: 15, color: C.text, lineHeight: 1.9, fontStyle: "italic" }}>{verseText}</div>
+            </div>
+          )}
+          {verseText?.startsWith("Could") && <div style={{ color: "#f08080", fontSize: 13, marginBottom: 14 }}>{verseText}</div>}
+
+          {verseText && !verseText.startsWith("Could") && (
+            <>
+              <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                <Btn size="sm" variant="ghost" onClick={reflect} disabled={aiLoading}>{aiLoading ? <><Spinner />&nbsp;Reflecting...</> : "AI Reflection"}</Btn>
+              </div>
+              {reflection && (
+                <div style={{ padding: "14px 16px", background: C.accentGlow, border: `1px solid ${C.borderHi}`, borderRadius: 8, marginBottom: 14 }}>
+                  <div style={{ fontSize: 10, color: C.accent, marginBottom: 8, letterSpacing: "0.1em" }}>REFLECTION</div>
+                  <div style={{ fontSize: 13, color: "#c0c8e0", lineHeight: 1.8 }}>{reflection}</div>
+                </div>
+              )}
+              <Label style={{ marginBottom: 6 }}>Add a note</Label>
+              <Input value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Write your thoughts on this passage..." multiline rows={3} />
+              <div style={{ marginTop: 10 }}><Btn variant="primary" onClick={saveNote} disabled={!noteText.trim()}>Save Note</Btn></div>
+            </>
+          )}
+        </Card>
+      )}
+
+      {view === "notes" && (
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Bible Notes</div>
+          {notes.length === 0 && <Card style={{ textAlign: "center", padding: "40px 20px" }}><div style={{ color: C.dim }}>No notes yet. Look up a verse and add your thoughts.</div></Card>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {notes.map(n => (
+              <Card key={n.id}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, color: C.accent, fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>{n.ref}</div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span style={{ fontSize: 10, color: C.dim }}>{n.date}</span>
+                    <span onClick={() => setNotes(notes.filter(x => x.id !== n.id))} style={{ color: C.dim, cursor: "pointer", fontSize: 16 }}>×</span>
+                  </div>
+                </div>
+                {n.verse && <div style={{ fontSize: 13, color: C.muted, fontStyle: "italic", lineHeight: 1.7, marginBottom: 10, padding: "8px 12px", background: C.surface2, borderRadius: 4 }}>{n.verse.slice(0, 200)}{n.verse.length > 200 ? "..." : ""}</div>}
+                <div style={{ fontSize: 13, color: C.text, lineHeight: 1.7 }}>{n.note}</div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── NOTES (inspired by quickwitbunnyblog) ────────────────────────────────────
 const NotesAndJournal = ({ userId }) => {
   const [subTab, setSubTab] = useState("notes");
   const [notes, setNotes] = useSynced("obsidian_notes", [], userId);
   const [activeNote, setActiveNote] = useState(null);
-  const [noteTitle, setNoteTitle] = useState("");
-  const [noteBlocks, setNoteBlocks] = useState([]); // rich blocks: {id, type:"text"|"image"|"url"|"video", content, data}
-  const [noteTags, setNoteTags] = useState("");
-  const [noteSearch, setNoteSearch] = useState("");
   const [isPreview, setIsPreview] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [noteFont, setNoteFont] = useSynced("note_font", { family:"'JetBrains Mono',monospace", size:14, lineH:1.85, spacing:0 }, userId);
-  const noteFileRef = useRef();
-  const [insertAfter, setInsertAfter] = useState(null); // block id to insert after
-  const [urlDraft, setUrlDraft] = useState("");
+  const [search, setSearch] = useState("");
 
-  // Journal
-  const [posts, setPosts] = useSynced("journal_posts", [], userId);
-  const [journalView, setJournalView] = useState("list");
-  const [activePost, setActivePost] = useState(null);
-  const [jTitle, setJTitle] = useState(""); const [jBody, setJBody] = useState(""); const [jMood, setJMood] = useState("Neutral"); const [jSearch, setJSearch] = useState("");
-  const [jAttachments, setJAttachments] = useState([]);
-  const jFileRef = useRef();
-  const [jUrlInput, setJUrlInput] = useState("");
-  const moods = ["Neutral","Good","Great","Rough","Motivated","Tired","Reflective"];
+  // Editor state
+  const [title, setTitle] = useState("");
+  const [blocks, setBlocks] = useState([]); // {id,type:"text"|"image"|"video"|"url"|"divider"|"quote",content,data}
+  const [tags, setTags] = useState("");
 
-  // ── block helpers ──
-  const mkBlock = (type, content="", data="") => ({ id: Date.now()+Math.random(), type, content, data });
+  // Typography settings (synced)
+  const [typo, setTypo] = useSynced("note_typo", { font:"Georgia,serif", size:16, lineH:"loose", spacing:"normal", color:"#d8dff0" }, userId);
 
-  const openNote = (note) => {
-    setActiveNote(note);
-    setNoteTitle(note.title || "");
-    setNoteTags(note.tags || "");
+  // Refs
+  const fileRef = useRef();
+  const insertTargetRef = useRef(null);
+
+  const mkId = () => Date.now() + Math.random();
+  const mkBlock = (type, content="", data="") => ({ id: mkId(), type, content, data });
+
+  const openNote = n => {
+    setActiveNote(n);
+    setTitle(n.title || "");
+    setTags(n.tags || "");
     setIsPreview(false);
-    // support legacy notes that stored body as string
-    if (Array.isArray(note.blocks)) setNoteBlocks(note.blocks);
-    else setNoteBlocks([mkBlock("text", note.body || "")]);
+    if (Array.isArray(n.blocks) && n.blocks.length > 0) setBlocks(n.blocks);
+    else setBlocks([mkBlock("text", n.body || "")]);
   };
 
   const saveNote = () => {
-    const updated = { ...activeNote, title: noteTitle||"Untitled", blocks: noteBlocks, body: noteBlocks.filter(b=>b.type==="text").map(b=>b.content).join("\n\n"), tags: noteTags, updated: new Date().toLocaleDateString() };
-    if (activeNote.id === "new") { const n={...updated,id:Date.now(),created:new Date().toLocaleDateString()}; setNotes([n,...notes]); setActiveNote(n); }
-    else setNotes(notes.map(n => n.id===activeNote.id ? updated : n));
-  };
-  const newNote = () => openNote({ id:"new", title:"", blocks:[mkBlock("text","")], tags:"", created:new Date().toLocaleDateString(), updated:new Date().toLocaleDateString() });
-  const deleteNote = id => { setNotes(notes.filter(n=>n.id!==id)); setActiveNote(null); };
-
-  const updateBlock = (id, field, val) => setNoteBlocks(bs => bs.map(b => b.id===id ? {...b,[field]:val} : b));
-  const deleteBlock = id => setNoteBlocks(bs => bs.filter(b=>b.id!==id));
-  const addBlockAfter = (afterId, block) => setNoteBlocks(bs => {
-    const i = bs.findIndex(b=>b.id===afterId);
-    const next = [...bs]; next.splice(i+1,0,block); return next;
-  });
-  const addBlockAtEnd = (block) => setNoteBlocks(bs => [...bs, block]);
-
-  const insertMedia = (afterId, type, data, name="") => {
-    const block = mkBlock(type, name, data);
-    if (afterId != null) addBlockAfter(afterId, block);
-    else addBlockAtEnd(block);
+    const bodyText = blocks.filter(b => b.type === "text").map(b => b.content).join("\n\n");
+    const updated = { ...activeNote, title: title || "Untitled", blocks, body: bodyText, tags, updated: new Date().toLocaleDateString() };
+    if (activeNote.id === "new") { const n = { ...updated, id: Date.now(), created: new Date().toLocaleDateString() }; setNotes([n, ...notes]); setActiveNote(n); }
+    else setNotes(notes.map(n => n.id === activeNote.id ? updated : n));
   };
 
-  const handleNoteFile = (e, afterId) => {
+  const newNote = () => openNote({ id: "new", title: "", blocks: [mkBlock("text", "")], tags: "", created: new Date().toLocaleDateString(), updated: new Date().toLocaleDateString() });
+  const deleteNote = id => { setNotes(notes.filter(n => n.id !== id)); setActiveNote(null); };
+
+  const updateBlock = (id, f, v) => setBlocks(bs => bs.map(b => b.id === id ? { ...b, [f]: v } : b));
+  const removeBlock = id => setBlocks(bs => bs.filter(b => b.id !== id));
+  const addAfter = (afterId, block) => setBlocks(bs => { const i = bs.findIndex(b => b.id === afterId); const n = [...bs]; n.splice(i + 1, 0, block); return n; });
+  const addEnd = block => setBlocks(bs => [...bs, block]);
+
+  const insertMedia = (afterId, type, data, content = "") => {
+    const b = mkBlock(type, content, data);
+    afterId ? addAfter(afterId, b) : addEnd(b);
+  };
+
+  const handleFile = (e, afterId) => {
     Array.from(e.target.files).forEach(file => {
       const r = new FileReader();
-      if (file.type.startsWith("image/")) { r.onload = ev => insertMedia(afterId,"image",ev.target.result,file.name); r.readAsDataURL(file); }
-      else if (file.type.startsWith("video/")) { r.onload = ev => insertMedia(afterId,"video",ev.target.result,file.name); r.readAsDataURL(file); }
+      if (file.type.startsWith("image/")) { r.onload = ev => insertMedia(afterId, "image", ev.target.result, file.name); r.readAsDataURL(file); }
+      else if (file.type.startsWith("video/")) { r.onload = ev => insertMedia(afterId, "video", ev.target.result, file.name); r.readAsDataURL(file); }
     });
     e.target.value = "";
   };
 
-  const insertUrl = (afterId) => {
-    if (!urlDraft.trim()) return;
-    const u = urlDraft.trim();
+  const embedUrl = (url, afterId) => {
+    if (!url.trim()) return;
+    const u = url.trim();
     const isYT = /youtu(be\.com|\.be)/.test(u);
     const isVimeo = /vimeo\.com/.test(u);
     const isImg = /\.(png|jpg|jpeg|gif|webp|svg)(\?|$)/i.test(u);
-    const type = (isYT||isVimeo) ? "video" : isImg ? "image" : "url";
+    const isSpotify = /open\.spotify\.com/.test(u);
+    const type = isYT || isVimeo ? "video" : isImg ? "image" : isSpotify ? "spotify" : "url";
     insertMedia(afterId, type, u, u);
-    setUrlDraft("");
-    setInsertAfter(null);
   };
 
-  // ── markdown renderer (for preview) ──
-  const renderMd = (text) => {
+  const getYTEmbed = url => { const m = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/); return m ? `https://www.youtube.com/embed/${m[1]}` : null; };
+  const getVimeoEmbed = url => { const m = url.match(/vimeo\.com\/(\d+)/); return m ? `https://player.vimeo.com/video/${m[1]}` : null; };
+  const getSpotifyEmbed = url => { const m = url.match(/spotify\.com\/(track|album|playlist)\/([a-zA-Z0-9]+)/); return m ? `https://open.spotify.com/embed/${m[1]}/${m[2]}` : null; };
+
+  const filteredNotes = notes.filter(n =>
+    n.title?.toLowerCase().includes(search.toLowerCase()) ||
+    n.body?.toLowerCase().includes(search.toLowerCase()) ||
+    n.tags?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  // Typography map
+  const lineHMap = { tight: 1.4, normal: 1.7, loose: 1.9, airy: 2.3 };
+  const spacingMap = { tight: "-0.02em", normal: "0em", wide: "0.04em", wider: "0.08em" };
+
+  const fontOptions = [
+    { label: "Mono", value: "'JetBrains Mono',monospace" },
+    { label: "Georgia", value: "Georgia,serif" },
+    { label: "Times", value: "'Times New Roman',serif" },
+    { label: "Trebuchet", value: "'Trebuchet MS',sans-serif" },
+    { label: "Cursive", value: "cursive" },
+  ];
+
+  const editorStyle = {
+    fontFamily: typo.font,
+    fontSize: typo.size,
+    lineHeight: lineHMap[typo.lineH] || 1.9,
+    letterSpacing: spacingMap[typo.spacing] || "0em",
+    color: typo.color,
+  };
+
+  // Journal state
+  const [posts, setPosts] = useSynced("journal_posts", [], userId);
+  const [jView, setJView] = useState("list");
+  const [jActive, setJActive] = useState(null);
+  const [jTitle, setJTitle] = useState(""); const [jBody, setJBody] = useState(""); const [jMood, setJMood] = useState("Neutral"); const [jSearch, setJSearch] = useState("");
+  const moods = ["Neutral","Good","Great","Rough","Motivated","Tired","Reflective"];
+  const saveJournal = () => {
+    if (!jBody.trim()) return;
+    const post = { id: Date.now(), title: jTitle.trim() || new Date().toLocaleDateString("en-US",{month:"long",day:"numeric"}), body: jBody.trim(), mood: jMood, date: new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"}), wordCount: jBody.trim().split(/\s+/).length };
+    setPosts([post, ...posts]); setJTitle(""); setJBody(""); setJMood("Neutral"); setJView("list");
+  };
+  const filteredPosts = posts.filter(p => p.title?.toLowerCase().includes(jSearch.toLowerCase()) || p.body?.toLowerCase().includes(jSearch.toLowerCase()));
+
+  // Inline insert toolbar per block
+  const [insertOpen, setInsertOpen] = useState(null); // block id
+  const [urlDraft, setUrlDraft] = useState("");
+
+  const typoCSS = `
+    .note-text-block { font-family: ${typo.font}; font-size: ${typo.size}px; line-height: ${lineHMap[typo.lineH]||1.9}; letter-spacing: ${spacingMap[typo.spacing]||"0em"}; color: ${typo.color}; background: transparent; border: none; width: 100%; resize: none; outline: none; padding: 0; min-height: 28px; }
+    .note-text-block::placeholder { color: rgba(100,110,150,0.4); }
+    .note-preview-text { font-family: ${typo.font}; font-size: ${typo.size}px; line-height: ${lineHMap[typo.lineH]||1.9}; letter-spacing: ${spacingMap[typo.spacing]||"0em"}; color: ${typo.color}; }
+    .note-preview-text h1 { font-size: 1.8em; font-weight: 700; border-bottom: 1px solid rgba(80,100,180,0.3); padding-bottom: 0.2em; margin: 0.6em 0 0.3em; color: #eef; }
+    .note-preview-text h2 { font-size: 1.4em; font-weight: 600; margin: 0.7em 0 0.2em; color: #dde; }
+    .note-preview-text h3 { font-size: 1.15em; font-weight: 600; margin: 0.5em 0; color: #ccd; }
+    .note-preview-text strong { font-weight: 700; color: #eef; }
+    .note-preview-text em { font-style: italic; }
+    .note-preview-text del { text-decoration: line-through; opacity: 0.6; }
+    .note-preview-text code { font-family: 'JetBrains Mono',monospace; font-size: 0.85em; background: rgba(40,60,120,0.3); border-radius: 3px; padding: 1px 5px; color: #88aaff; }
+    .note-preview-text pre { background: rgba(5,5,20,0.85); border-radius: 6px; padding: 14px; overflow-x: auto; margin: 0.7em 0; }
+    .note-preview-text blockquote { border-left: 3px solid #4a78ff; margin: 0.7em 0; padding: 4px 14px; background: rgba(40,80,200,0.08); color: #8090c0; border-radius: 0 4px 4px 0; }
+    .note-preview-text hr { border: none; border-top: 1px solid rgba(40,80,160,0.3); margin: 1em 0; }
+    .note-preview-text ul { padding-left: 1.5em; } .note-preview-text li { margin: 0.2em 0; }
+    .note-preview-text a { color: #6090ff; }
+    .note-block-row:hover .block-insert-btn { opacity: 1; }
+    .block-insert-btn { opacity: 0; transition: opacity 0.15s; }
+  `;
+
+  const renderMd = text => {
     if (!text) return "";
     return text
       .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-      .replace(/^######\s+(.+)$/gm,"<h6>$1</h6>").replace(/^#####\s+(.+)$/gm,"<h5>$1</h5>")
-      .replace(/^####\s+(.+)$/gm,"<h4>$1</h4>").replace(/^###\s+(.+)$/gm,"<h3>$1</h3>")
-      .replace(/^##\s+(.+)$/gm,"<h2>$1</h2>").replace(/^#\s+(.+)$/gm,"<h1>$1</h1>")
-      .replace(/\*\*\*(.+?)\*\*\*/g,"<strong><em>$1</em></strong>").replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>")
-      .replace(/\*(.+?)\*/g,"<em>$1</em>").replace(/~~(.+?)~~/g,"<del>$1</del>")
-      .replace(/`([^`\n]+)`/g,"<code>$1</code>")
+      .replace(/^#{6}\s(.+)$/gm,"<h6>$1</h6>").replace(/^#{5}\s(.+)$/gm,"<h5>$1</h5>")
+      .replace(/^#{4}\s(.+)$/gm,"<h4>$1</h4>").replace(/^#{3}\s(.+)$/gm,"<h3>$1</h3>")
+      .replace(/^#{2}\s(.+)$/gm,"<h2>$1</h2>").replace(/^#\s(.+)$/gm,"<h1>$1</h1>")
+      .replace(/\*\*\*(.+?)\*\*\*/g,"<strong><em>$1</em></strong>")
+      .replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>").replace(/\*(.+?)\*/g,"<em>$1</em>")
+      .replace(/~~(.+?)~~/g,"<del>$1</del>").replace(/`([^`\n]+)`/g,"<code>$1</code>")
       .replace(/^```[\w]*\n?([\s\S]*?)```/gm,"<pre><code>$1</code></pre>")
-      .replace(/^-{3,}$/gm,"<hr/>").replace(/^>\s+(.+)$/gm,"<blockquote>$1</blockquote>")
-      .replace(/^-\s+\[x\]\s+(.+)$/gm,'<div class="cb"><input type="checkbox" checked disabled/> $1</div>')
-      .replace(/^-\s+\[\s?\]\s+(.+)$/gm,'<div class="cb"><input type="checkbox" disabled/> $1</div>')
-      .replace(/^[-*]\s+(.+)$/gm,"<li>$1</li>")
+      .replace(/^-{3,}$/gm,"<hr/>").replace(/^>\s(.+)$/gm,"<blockquote>$1</blockquote>")
+      .replace(/^[-*]\s(.+)$/gm,"<li>$1</li>").replace(/(<li>.*<\/li>\n?)+/g,"<ul>$&</ul>")
       .replace(/\[(.+?)\]\((.+?)\)/g,'<a href="$2" target="_blank">$1</a>')
-      .replace(/\n\n+/g,"</p><p>");
+      .replace(/\n\n/g,"</p><p>").replace(/^(?!<[hupbacl])(.+)$/gm,"<p>$1</p>");
   };
 
-  const getYTEmbed = (url) => {
-    const m = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-    return m ? `https://www.youtube.com/embed/${m[1]}` : null;
-  };
-  const getVimeoEmbed = (url) => {
-    const m = url.match(/vimeo\.com\/(\d+)/);
-    return m ? `https://player.vimeo.com/video/${m[1]}` : null;
-  };
-
-  const filteredNotes = notes.filter(n => n.title?.toLowerCase().includes(noteSearch.toLowerCase()) || n.body?.toLowerCase().includes(noteSearch.toLowerCase()) || n.tags?.toLowerCase().includes(noteSearch.toLowerCase()));
-  const filteredPosts = posts.filter(p => p.title?.toLowerCase().includes(jSearch.toLowerCase()) || p.body?.toLowerCase().includes(jSearch.toLowerCase()));
-
-  const handleJFile = e => { Array.from(e.target.files).forEach(file => { if (file.type.startsWith("image/")||file.type.startsWith("video/")) { const r=new FileReader(); r.onload=ev=>setJAttachments(a=>[...a,{type:file.type.startsWith("video/")?"video":"image",name:file.name,data:ev.target.result}]); r.readAsDataURL(file); } else setJAttachments(a=>[...a,{type:"file",name:file.name}]); }); };
-  const addJUrl = () => { if (!jUrlInput.trim()) return; setJAttachments(a=>[...a,{type:"url",name:jUrlInput.trim(),data:jUrlInput.trim()}]); setJUrlInput(""); };
-  const saveJournal = () => {
-    if (!jBody.trim()) return;
-    const post = { id:Date.now(), title:jTitle.trim()||new Date().toLocaleDateString("en-US",{month:"long",day:"numeric"}), body:jBody.trim(), mood:jMood, date:new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"}), wordCount:jBody.trim().split(/\s+/).length, attachments:jAttachments };
-    setPosts([post,...posts]); setJTitle(""); setJBody(""); setJMood("Neutral"); setJAttachments([]); setJournalView("list");
-  };
-
-  const fontFamilies = [
-    { label:"Mono (default)", value:"'JetBrains Mono',monospace" },
-    { label:"Sans-serif", value:"system-ui,sans-serif" },
-    { label:"Serif", value:"Georgia,serif" },
-    { label:"Dyslexic-friendly", value:"'Verdana',sans-serif" },
-  ];
-
-  const mdCss = `
-    .md-preview{font-size:${noteFont.size}px;line-height:${noteFont.lineH};color:#c0c8e0;letter-spacing:${noteFont.spacing}em;font-family:${noteFont.family}}
-    .md-preview h1{font-size:1.7em;font-weight:700;margin:.5em 0 .25em;color:#e8eaf6;border-bottom:1px solid rgba(30,60,120,.35);padding-bottom:.2em}
-    .md-preview h2{font-size:1.35em;font-weight:600;margin:.7em 0 .2em;color:#d0d8f0}
-    .md-preview h3{font-size:1.1em;font-weight:600;margin:.6em 0 .15em;color:#b0bcdc}
-    .md-preview h4,.md-preview h5,.md-preview h6{font-size:1em;font-weight:600;color:#9099c0;margin:.4em 0}
-    .md-preview p{margin:.4em 0}
-    .md-preview strong{color:#e8eaf6;font-weight:700}.md-preview em{color:#b0c0e0;font-style:italic}.md-preview del{color:#604060;text-decoration:line-through}
-    .md-preview code{background:rgba(40,60,120,.3);border:1px solid rgba(40,80,160,.25);border-radius:3px;padding:1px 5px;font-family:'JetBrains Mono',monospace;font-size:.85em;color:#88aaff}
-    .md-preview pre{background:rgba(5,5,20,.85);border:1px solid rgba(30,60,120,.3);border-radius:6px;padding:14px 16px;overflow-x:auto;margin:.7em 0}
-    .md-preview pre code{background:none;border:none;padding:0;font-size:.9em;color:#a0b8ff}
-    .md-preview blockquote{border-left:3px solid #4a78ff;margin:.7em 0;padding:5px 14px;background:rgba(40,80,200,.08);color:#8090c0;border-radius:0 4px 4px 0}
-    .md-preview hr{border:none;border-top:1px solid rgba(30,60,120,.3);margin:1.1em 0}
-    .md-preview li{margin:.25em 0;line-height:1.7;list-style:disc;margin-left:1.4em}
-    .md-preview a{color:#6090ff;text-decoration:none}.md-preview a:hover{text-decoration:underline}
-    .md-preview .cb{display:flex;align-items:center;gap:6px;margin:.25em 0}.md-preview .cb input{accent-color:#4a78ff}
-    .note-block-text{font-family:${noteFont.family};font-size:${noteFont.size}px;line-height:${noteFont.lineH};letter-spacing:${noteFont.spacing}em;color:#c8d0e8;background:transparent;border:none;width:100%;resize:none;outline:none;white-space:pre-wrap;padding:0}
-    .note-block-text::placeholder{color:#2a2a4a}
-    .block-toolbar{opacity:0;transition:opacity .15s}.block-row:hover .block-toolbar{opacity:1}
-  `;
-
-  // ── Block renderer in edit mode ──
-  const BlockEditor = ({ block, afterId }) => {
-    const textRef = useRef();
-    const autoResize = (el) => { if(el){el.style.height="auto";el.style.height=el.scrollHeight+"px";} };
-    useEffect(()=>{ if(block.type==="text"&&textRef.current) autoResize(textRef.current); },[block.content]);
+  const BlockInlineEditor = ({ block }) => {
+    const taRef = useRef();
+    const autoH = el => { if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; } };
+    useEffect(() => { autoH(taRef.current); }, [block.content]);
 
     return (
-      <div className="block-row" style={{ position:"relative", marginBottom:4 }}>
-        {block.type==="text" && (
-          <div style={{ display:"flex", gap:0 }}>
-            <textarea ref={textRef} className="note-block-text" value={block.content} rows={1}
-              onChange={e=>{updateBlock(block.id,"content",e.target.value);autoResize(e.target);}}
-              onKeyDown={e=>{
-                if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addBlockAfter(block.id,mkBlock("text",""));}
-                if(e.key==="Backspace"&&block.content===""){ e.preventDefault(); deleteBlock(block.id); }
+      <div className="note-block-row" style={{ position: "relative", marginBottom: 6 }}>
+        {block.type === "text" && (
+          <div style={{ display: "flex", gap: 6 }}>
+            <textarea ref={taRef} className="note-text-block" value={block.content} rows={1}
+              onChange={e => { updateBlock(block.id, "content", e.target.value); autoH(e.target); }}
+              onKeyDown={e => {
+                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addAfter(block.id, mkBlock("text", "")); }
+                if (e.key === "Backspace" && block.content === "") { e.preventDefault(); removeBlock(block.id); }
               }}
-              placeholder="Write here... (markdown supported)"
+              placeholder="Write here... (use markdown: # heading, **bold**, *italic*, > quote, ---)"
             />
-            <div className="block-toolbar" style={{ display:"flex", flexDirection:"column", gap:2, marginLeft:6, flexShrink:0 }}>
-              <button onClick={()=>setInsertAfter(insertAfter===block.id?null:block.id)} style={{ background:insertAfter===block.id?"rgba(74,120,255,0.2)":"transparent", border:`1px solid ${insertAfter===block.id?"#4a78ff":C.border}`, color:insertAfter===block.id?C.accent:C.muted, borderRadius:3, fontSize:10, padding:"2px 5px", cursor:"pointer" }} title="Insert media here">+</button>
-              <button onClick={()=>deleteBlock(block.id)} style={{ background:"transparent", border:`1px solid ${C.border}`, color:"#f08080", borderRadius:3, fontSize:10, padding:"2px 5px", cursor:"pointer" }}>×</button>
+            <button className="block-insert-btn" onClick={() => { setInsertOpen(insertOpen === block.id ? null : block.id); setUrlDraft(""); }}
+              style={{ background: insertOpen === block.id ? C.accentGlow : "rgba(20,30,80,0.6)", border: `1px solid ${insertOpen === block.id ? C.borderHi : C.border}`, color: insertOpen === block.id ? C.accent : C.muted, borderRadius: 4, fontSize: 14, padding: "2px 8px", cursor: "pointer", flexShrink: 0, height: 28 }} title="Insert media">+</button>
+          </div>
+        )}
+        {block.type === "divider" && (
+          <div style={{ position: "relative", margin: "12px 0" }}>
+            <hr style={{ border: "none", borderTop: `1px solid ${C.border}`, margin: 0 }} />
+            <button onClick={() => removeBlock(block.id)} style={{ position: "absolute", right: 0, top: -10, background: "rgba(0,0,0,0.7)", border: "none", color: C.dim, borderRadius: "50%", width: 18, height: 18, cursor: "pointer", fontSize: 11 }}>×</button>
+          </div>
+        )}
+        {block.type === "quote" && (
+          <div style={{ position: "relative" }}>
+            <div style={{ borderLeft: `3px solid ${C.accent}`, paddingLeft: 12, margin: "8px 0" }}>
+              <textarea className="note-text-block" value={block.content} rows={2} onChange={e => updateBlock(block.id, "content", e.target.value)} placeholder="Quote text..." style={{ fontStyle: "italic", color: "#8090c0" }} />
             </div>
+            <button onClick={() => removeBlock(block.id)} style={{ position: "absolute", right: 0, top: 0, background: "transparent", border: "none", color: C.dim, cursor: "pointer", fontSize: 16 }}>×</button>
           </div>
         )}
-        {block.type==="image" && (
-          <div style={{ position:"relative", marginBottom:8 }}>
-            <img src={block.data} alt={block.content||"image"} style={{ maxWidth:"100%", borderRadius:6, display:"block", border:`1px solid ${C.border}` }} />
-            {block.content && <div style={{ fontSize:11, color:C.dim, marginTop:4, fontStyle:"italic" }}>{block.content}</div>}
-            <button onClick={()=>deleteBlock(block.id)} style={{ position:"absolute", top:6, right:6, background:"rgba(0,0,0,0.7)", border:"none", color:"#fff", borderRadius:"50%", width:22, height:22, cursor:"pointer", fontSize:12 }}>×</button>
+        {block.type === "image" && (
+          <div style={{ position: "relative", marginBottom: 8 }}>
+            <img src={block.data} alt={block.content || ""} style={{ maxWidth: "100%", borderRadius: 6, display: "block", border: `1px solid ${C.border}` }} />
+            {block.content && <div style={{ fontSize: 11, color: C.dim, marginTop: 4, fontStyle: "italic", textAlign: "center" }}>{block.content}</div>}
+            <button onClick={() => removeBlock(block.id)} style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.75)", border: "none", color: "#fff", borderRadius: "50%", width: 22, height: 22, cursor: "pointer", fontSize: 12 }}>×</button>
           </div>
         )}
-        {block.type==="video" && (()=>{
-          const ytEmbed=getYTEmbed(block.data); const vmEmbed=getVimeoEmbed(block.data);
+        {block.type === "video" && (() => {
+          const yt = getYTEmbed(block.data); const vm = getVimeoEmbed(block.data);
           return (
-            <div style={{ position:"relative", marginBottom:8 }}>
-              {(ytEmbed||vmEmbed)
-                ? <iframe src={ytEmbed||vmEmbed} style={{ width:"100%", aspectRatio:"16/9", borderRadius:6, border:`1px solid ${C.border}` }} allowFullScreen title="video" />
-                : <video src={block.data} controls style={{ maxWidth:"100%", borderRadius:6, border:`1px solid ${C.border}` }} />
-              }
-              <button onClick={()=>deleteBlock(block.id)} style={{ position:"absolute", top:6, right:6, background:"rgba(0,0,0,0.7)", border:"none", color:"#fff", borderRadius:"50%", width:22, height:22, cursor:"pointer", fontSize:12 }}>×</button>
+            <div style={{ position: "relative", marginBottom: 8 }}>
+              {(yt || vm) ? <iframe src={yt || vm} style={{ width: "100%", aspectRatio: "16/9", borderRadius: 6, border: `1px solid ${C.border}` }} allowFullScreen title="video" /> : <video src={block.data} controls style={{ maxWidth: "100%", borderRadius: 6 }} />}
+              <button onClick={() => removeBlock(block.id)} style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.75)", border: "none", color: "#fff", borderRadius: "50%", width: 22, height: 22, cursor: "pointer", fontSize: 12 }}>×</button>
             </div>
           );
         })()}
-        {block.type==="url" && (
-          <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 12px", background:C.surface2, borderRadius:6, border:`1px solid ${C.border}`, marginBottom:8, position:"relative" }}>
+        {block.type === "spotify" && (() => {
+          const embed = getSpotifyEmbed(block.data);
+          return embed ? (
+            <div style={{ position: "relative", marginBottom: 8 }}>
+              <iframe src={embed} style={{ width: "100%", height: 80, borderRadius: 6, border: "none" }} allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" />
+              <button onClick={() => removeBlock(block.id)} style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,0.75)", border: "none", color: "#fff", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", fontSize: 11 }}>×</button>
+            </div>
+          ) : <div style={{ color: "#f08080", fontSize: 12 }}>Invalid Spotify URL</div>;
+        })()}
+        {block.type === "url" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", background: C.surface2, borderRadius: 6, border: `1px solid ${C.border}`, marginBottom: 8, position: "relative" }}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M5 7a3 3 0 004.24 4.24l1.42-1.42A3 3 0 006.76 5.34L5.34 6.76" stroke={C.accent} strokeWidth="1.5" strokeLinecap="round"/></svg>
-            <a href={block.data} target="_blank" rel="noopener noreferrer" style={{ color:C.accent, fontSize:12, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", flex:1 }}>{block.content||block.data}</a>
-            <button onClick={()=>deleteBlock(block.id)} style={{ background:"transparent", border:"none", color:C.dim, cursor:"pointer", fontSize:16, flexShrink:0 }}>×</button>
+            <a href={block.data} target="_blank" rel="noopener noreferrer" style={{ color: C.accent, fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{block.content || block.data}</a>
+            <button onClick={() => removeBlock(block.id)} style={{ background: "transparent", border: "none", color: C.dim, cursor: "pointer", fontSize: 16, flexShrink: 0 }}>×</button>
           </div>
         )}
 
-        {/* Inline insert panel */}
-        {insertAfter===block.id && (
-          <div style={{ background:C.surface2, border:`1px solid ${C.borderHi}`, borderRadius:6, padding:"10px 12px", marginBottom:8, display:"flex", flexWrap:"wrap", gap:8, alignItems:"center" }}>
-            <input ref={noteFileRef} type="file" multiple accept="image/*,video/*" style={{ display:"none" }} onChange={e=>handleNoteFile(e,block.id)} />
-            <button onClick={()=>noteFileRef.current.click()} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.muted, padding:"4px 10px", borderRadius:3, fontSize:11, cursor:"pointer" }}>📎 Image / Video</button>
-            <input value={urlDraft} onChange={e=>setUrlDraft(e.target.value)} placeholder="Paste YouTube, image, or any URL..." onKeyDown={e=>e.key==="Enter"&&insertUrl(block.id)} style={{ flex:1, minWidth:160, background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`, borderRadius:3, color:C.text, padding:"4px 8px", fontSize:11, outline:"none", fontFamily:"inherit" }} />
-            <button onClick={()=>insertUrl(block.id)} style={{ background:C.accentGlow, border:`1px solid ${C.borderHi}`, color:C.accent, padding:"4px 10px", borderRadius:3, fontSize:11, cursor:"pointer" }}>Embed</button>
-            <button onClick={()=>setInsertAfter(null)} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.muted, padding:"4px 8px", borderRadius:3, fontSize:11, cursor:"pointer" }}>Cancel</button>
+        {/* Insert toolbar */}
+        {insertOpen === block.id && (
+          <div style={{ background: "#0a0a20", border: `1px solid ${C.borderHi}`, borderRadius: 8, padding: "12px 14px", marginTop: 4, marginBottom: 8 }}>
+            <div style={{ fontSize: 10, color: C.dim, letterSpacing: "0.1em", marginBottom: 10 }}>INSERT BELOW</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+              {[
+                { label: "Image / Video", action: () => { insertTargetRef.current = block.id; fileRef.current.click(); setInsertOpen(null); } },
+                { label: "Divider —", action: () => { addAfter(block.id, mkBlock("divider")); setInsertOpen(null); } },
+                { label: "Quote", action: () => { addAfter(block.id, mkBlock("quote")); setInsertOpen(null); } },
+                { label: "Text Block", action: () => { addAfter(block.id, mkBlock("text")); setInsertOpen(null); } },
+              ].map(btn => (
+                <button key={btn.label} onClick={btn.action} style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.muted, padding: "4px 12px", borderRadius: 4, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>{btn.label}</button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input value={urlDraft} onChange={e => setUrlDraft(e.target.value)} placeholder="Paste YouTube, Spotify, image URL, or any link..." onKeyDown={e => e.key === "Enter" && (embedUrl(urlDraft, block.id), setInsertOpen(null), setUrlDraft(""))} style={{ flex: 1, background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 4, color: C.text, padding: "6px 10px", fontSize: 12, outline: "none", fontFamily: "inherit" }} />
+              <button onClick={() => { embedUrl(urlDraft, block.id); setInsertOpen(null); setUrlDraft(""); }} style={{ background: C.accentGlow, border: `1px solid ${C.borderHi}`, color: C.accent, padding: "6px 14px", borderRadius: 4, fontSize: 11, cursor: "pointer" }}>Embed</button>
+            </div>
           </div>
         )}
       </div>
     );
   };
 
-  // ── Block renderer in preview mode ──
   const BlockPreview = ({ block }) => {
-    if (block.type==="text") return <div className="md-preview" dangerouslySetInnerHTML={{ __html:renderMd(block.content) }} style={{ marginBottom:6 }} />;
-    if (block.type==="image") return <div style={{ marginBottom:12 }}><img src={block.data} alt={block.content||""} style={{ maxWidth:"100%", borderRadius:6, border:`1px solid ${C.border}` }} />{block.content&&<div style={{ fontSize:11,color:C.dim,marginTop:4,fontStyle:"italic" }}>{block.content}</div>}</div>;
-    if (block.type==="video") { const yt=getYTEmbed(block.data),vm=getVimeoEmbed(block.data); return <div style={{ marginBottom:12 }}>{(yt||vm)?<iframe src={yt||vm} style={{ width:"100%",aspectRatio:"16/9",borderRadius:6,border:`1px solid ${C.border}` }} allowFullScreen title="video" />:<video src={block.data} controls style={{ maxWidth:"100%",borderRadius:6 }} />}</div>; }
-    if (block.type==="url") return <div style={{ margin:"8px 0 12px",padding:"8px 12px",background:C.surface2,borderRadius:6,border:`1px solid ${C.border}` }}><a href={block.data} target="_blank" rel="noopener noreferrer" style={{ color:C.accent,fontSize:13 }}>🔗 {block.content||block.data}</a></div>;
+    if (block.type === "text") return <div className="note-preview-text" dangerouslySetInnerHTML={{ __html: renderMd(block.content) }} style={{ marginBottom: 8 }} />;
+    if (block.type === "divider") return <hr style={{ border: "none", borderTop: `1px solid ${C.border}`, margin: "16px 0" }} />;
+    if (block.type === "quote") return <blockquote style={{ borderLeft: `3px solid ${C.accent}`, paddingLeft: 14, margin: "10px 0", color: "#8090c0", fontStyle: "italic", ...editorStyle }}>{block.content}</blockquote>;
+    if (block.type === "image") return <div style={{ marginBottom: 14 }}><img src={block.data} alt={block.content || ""} style={{ maxWidth: "100%", borderRadius: 6, border: `1px solid ${C.border}` }} />{block.content && <div style={{ fontSize: 12, color: C.dim, marginTop: 6, textAlign: "center", fontStyle: "italic" }}>{block.content}</div>}</div>;
+    if (block.type === "video") { const yt = getYTEmbed(block.data), vm = getVimeoEmbed(block.data); return <div style={{ marginBottom: 14 }}>{(yt || vm) ? <iframe src={yt || vm} style={{ width: "100%", aspectRatio: "16/9", borderRadius: 6, border: `1px solid ${C.border}` }} allowFullScreen title="v" /> : <video src={block.data} controls style={{ maxWidth: "100%", borderRadius: 6 }} />}</div>; }
+    if (block.type === "spotify") { const e = getSpotifyEmbed(block.data); return e ? <iframe src={e} style={{ width: "100%", height: 80, borderRadius: 6, border: "none", marginBottom: 14 }} allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" /> : null; }
+    if (block.type === "url") return <div style={{ margin: "8px 0 14px", padding: "10px 14px", background: C.surface2, borderRadius: 6, border: `1px solid ${C.border}` }}><a href={block.data} target="_blank" rel="noopener noreferrer" style={{ color: C.accent, fontSize: 13 }}>🔗 {block.content || block.data}</a></div>;
     return null;
   };
 
-  // ── Font Settings panel ──
-  const FontSettings = () => (
-    <div style={{ position:"absolute", top:"100%", right:0, zIndex:50, background:"#0a0a1e", border:`1px solid ${C.borderHi}`, borderRadius:8, padding:16, width:240, boxShadow:"0 8px 32px rgba(0,0,0,0.6)" }}>
-      <div style={{ fontSize:11, fontWeight:600, color:C.muted, marginBottom:10, letterSpacing:"0.1em" }}>FONT SETTINGS</div>
-      <div style={{ marginBottom:10 }}>
-        <div style={{ fontSize:10, color:C.dim, marginBottom:4 }}>Font Family</div>
-        {fontFamilies.map(f=><button key={f.value} onClick={()=>setNoteFont(prev=>({...prev,family:f.value}))} style={{ display:"block", width:"100%", textAlign:"left", padding:"5px 8px", borderRadius:3, border:`1px solid ${noteFont.family===f.value?C.borderHi:C.border}`, background:noteFont.family===f.value?C.accentGlow:"transparent", color:noteFont.family===f.value?C.accent:C.muted, fontSize:11, cursor:"pointer", marginBottom:3, fontFamily:f.value }}>{f.label}</button>)}
+  const TypoPanel = () => (
+    <div style={{ position: "absolute", top: "100%", right: 0, zIndex: 60, background: "#08081c", border: `1px solid ${C.borderHi}`, borderRadius: 10, padding: 16, width: 220, boxShadow: "0 12px 40px rgba(0,0,0,0.7)" }} onClick={e => e.stopPropagation()}>
+      <div style={{ fontSize: 10, color: C.dim, letterSpacing: "0.12em", marginBottom: 10 }}>FONT</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: 12 }}>
+        {fontOptions.map(f => <button key={f.value} onClick={() => setTypo(p => ({ ...p, font: f.value }))} style={{ textAlign: "left", padding: "4px 8px", borderRadius: 3, border: `1px solid ${typo.font === f.value ? C.borderHi : "transparent"}`, background: typo.font === f.value ? C.accentGlow : "transparent", color: typo.font === f.value ? C.accent : C.muted, fontSize: 12, cursor: "pointer", fontFamily: f.value }}>{f.label}</button>)}
       </div>
-      <div style={{ marginBottom:10 }}>
-        <div style={{ fontSize:10, color:C.dim, marginBottom:4 }}>Font Size: {noteFont.size}px</div>
-        <input type="range" min={11} max={22} value={noteFont.size} onChange={e=>setNoteFont(p=>({...p,size:+e.target.value}))} style={{ width:"100%", accentColor:C.accent }} />
+      <div style={{ fontSize: 10, color: C.dim, letterSpacing: "0.12em", marginBottom: 6 }}>SIZE: {typo.size}px</div>
+      <input type="range" min={12} max={24} value={typo.size} onChange={e => setTypo(p => ({ ...p, size: +e.target.value }))} style={{ width: "100%", accentColor: C.accent, marginBottom: 10 }} />
+      <div style={{ fontSize: 10, color: C.dim, letterSpacing: "0.12em", marginBottom: 6 }}>LINE HEIGHT</div>
+      <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+        {["tight","normal","loose","airy"].map(v => <button key={v} onClick={() => setTypo(p => ({ ...p, lineH: v }))} style={{ flex: 1, padding: "3px 0", borderRadius: 3, border: `1px solid ${typo.lineH === v ? C.borderHi : C.border}`, background: typo.lineH === v ? C.accentGlow : "transparent", color: typo.lineH === v ? C.accent : C.dim, fontSize: 9, cursor: "pointer", textTransform: "capitalize" }}>{v}</button>)}
       </div>
-      <div style={{ marginBottom:10 }}>
-        <div style={{ fontSize:10, color:C.dim, marginBottom:4 }}>Line Height: {noteFont.lineH}</div>
-        <input type="range" min={1.2} max={3} step={0.05} value={noteFont.lineH} onChange={e=>setNoteFont(p=>({...p,lineH:+e.target.value}))} style={{ width:"100%", accentColor:C.accent }} />
+      <div style={{ fontSize: 10, color: C.dim, letterSpacing: "0.12em", marginBottom: 6 }}>SPACING</div>
+      <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+        {["tight","normal","wide","wider"].map(v => <button key={v} onClick={() => setTypo(p => ({ ...p, spacing: v }))} style={{ flex: 1, padding: "3px 0", borderRadius: 3, border: `1px solid ${typo.spacing === v ? C.borderHi : C.border}`, background: typo.spacing === v ? C.accentGlow : "transparent", color: typo.spacing === v ? C.accent : C.dim, fontSize: 9, cursor: "pointer", textTransform: "capitalize" }}>{v}</button>)}
       </div>
-      <div>
-        <div style={{ fontSize:10, color:C.dim, marginBottom:4 }}>Letter Spacing: {noteFont.spacing}em</div>
-        <input type="range" min={-0.05} max={0.2} step={0.01} value={noteFont.spacing} onChange={e=>setNoteFont(p=>({...p,spacing:+e.target.value}))} style={{ width:"100%", accentColor:C.accent }} />
+      <div style={{ fontSize: 10, color: C.dim, letterSpacing: "0.12em", marginBottom: 6 }}>TEXT COLOR</div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {["#d8dff0","#e8eaf6","#c0c8e0","#a0b0c8","#ffffff","#f0e8d0"].map(col => <button key={col} onClick={() => setTypo(p => ({ ...p, color: col }))} style={{ width: 24, height: 24, borderRadius: "50%", background: col, border: `2px solid ${typo.color === col ? "#fff" : "transparent"}`, cursor: "pointer" }} />)}
       </div>
     </div>
   );
 
+  const [showTypo, setShowTypo] = useState(false);
+
   return (
-    <div className="fade-up" style={isFullscreen?{position:"fixed",inset:0,zIndex:200,background:C.bg,display:"flex",flexDirection:"column"}:{}}>
-      <style>{mdCss}</style>
+    <div className="fade-up" style={isFullscreen ? { position: "fixed", inset: 0, zIndex: 200, background: C.bg, display: "flex", flexDirection: "column" } : {}}>
+      <style>{typoCSS}</style>
+      <input ref={fileRef} type="file" multiple accept="image/*,video/*" style={{ display: "none" }} onChange={e => { handleFile(e, insertTargetRef.current); insertTargetRef.current = null; }} />
 
       {!isFullscreen && (
-        <div style={{ display:"flex", gap:8, marginBottom:16, borderBottom:`1px solid ${C.border}`, paddingBottom:12 }}>
-          {["notes","journal"].map(t=>(
-            <button key={t} onClick={()=>setSubTab(t)} style={{ padding:"5px 14px", borderRadius:4, border:"none", cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:500, background:subTab===t?C.accentGlow:"transparent", color:subTab===t?C.accent:C.muted, borderBottom:`2px solid ${subTab===t?C.accent:"transparent"}`, transition:"all .15s", textTransform:"capitalize" }}>{t}</button>
-          ))}
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
+          {["notes","journal"].map(t => <button key={t} onClick={() => setSubTab(t)} style={{ padding: "5px 16px", borderRadius: 4, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 500, background: subTab === t ? C.accentGlow : "transparent", color: subTab === t ? C.accent : C.muted, borderBottom: `2px solid ${subTab === t ? C.accent : "transparent"}`, textTransform: "capitalize" }}>{t}</button>)}
         </div>
       )}
 
-      {subTab==="notes" && (
-        <div style={{ display:"flex", height:isFullscreen?"100vh":"calc(100vh - 210px)", minHeight:500, border:`1px solid ${C.border}`, borderRadius:isFullscreen?0:8, overflow:"hidden" }}>
+      {subTab === "notes" && (
+        <div style={{ display: "flex", height: isFullscreen ? "100vh" : "calc(100vh - 200px)", minHeight: 520, border: `1px solid ${C.border}`, borderRadius: isFullscreen ? 0 : 8, overflow: "hidden" }}>
 
           {/* Sidebar */}
           {!isFullscreen && (
-            <div style={{ width:220, flexShrink:0, borderRight:`1px solid ${C.border}`, display:"flex", flexDirection:"column", background:"#05050e" }}>
-              <div style={{ padding:"10px 12px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                <span style={{ fontSize:10, fontWeight:600, letterSpacing:"0.12em", color:C.muted, fontFamily:"'JetBrains Mono',monospace" }}>NOTES</span>
-                <button onClick={newNote} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 2px" }}>+</button>
+            <div style={{ width: 220, flexShrink: 0, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", background: "#05050e" }}>
+              <div style={{ padding: "10px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", color: C.muted, fontFamily: "'JetBrains Mono',monospace" }}>NOTES</span>
+                <button onClick={newNote} style={{ background: "transparent", border: "none", color: C.muted, cursor: "pointer", fontSize: 22, lineHeight: 1, padding: "0 2px" }}>+</button>
               </div>
-              <div style={{ padding:"7px 10px", borderBottom:`1px solid ${C.border}` }}>
-                <input value={noteSearch} onChange={e=>setNoteSearch(e.target.value)} placeholder="Search..." style={{ width:"100%", background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:4, color:C.text, padding:"5px 8px", fontSize:11, outline:"none", fontFamily:"inherit" }} />
+              <div style={{ padding: "7px 10px", borderBottom: `1px solid ${C.border}` }}>
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`, borderRadius: 4, color: C.text, padding: "5px 8px", fontSize: 11, outline: "none", fontFamily: "inherit" }} />
               </div>
-              <div style={{ flex:1, overflowY:"auto" }}>
-                {filteredNotes.length===0 && <div style={{ padding:"20px 12px", color:C.dim, fontSize:11, textAlign:"center" }}>No notes.<br/><span style={{ color:C.accent, cursor:"pointer" }} onClick={newNote}>Create one</span></div>}
-                {filteredNotes.map(n=>(
-                  <div key={n.id} onClick={()=>openNote(n)} style={{ padding:"9px 14px", cursor:"pointer", borderBottom:`1px solid rgba(30,60,120,0.1)`, background:activeNote?.id===n.id?"rgba(74,120,255,0.08)":"transparent", borderLeft:`2px solid ${activeNote?.id===n.id?C.accent:"transparent"}`, transition:"all .1s" }}>
-                    <div style={{ fontSize:12, fontWeight:500, color:activeNote?.id===n.id?C.accent:C.text, marginBottom:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{n.title||"Untitled"}</div>
-                    <div style={{ fontSize:10, color:C.dim }}>{n.updated}</div>
-                    {n.tags&&<div style={{ fontSize:9, color:C.muted, marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{n.tags}</div>}
+              <div style={{ flex: 1, overflowY: "auto" }}>
+                {filteredNotes.length === 0 && <div style={{ padding: "24px 12px", color: C.dim, fontSize: 11, textAlign: "center" }}>No notes.<br /><span style={{ color: C.accent, cursor: "pointer" }} onClick={newNote}>Create one +</span></div>}
+                {filteredNotes.map(n => (
+                  <div key={n.id} onClick={() => openNote(n)} style={{ padding: "10px 14px", cursor: "pointer", borderBottom: `1px solid rgba(30,60,120,0.1)`, background: activeNote?.id === n.id ? "rgba(74,120,255,0.08)" : "transparent", borderLeft: `2px solid ${activeNote?.id === n.id ? C.accent : "transparent"}`, transition: "all .1s" }}>
+                    <div style={{ fontSize: 12, fontWeight: 500, color: activeNote?.id === n.id ? C.accent : C.text, marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.title || "Untitled"}</div>
+                    <div style={{ fontSize: 10, color: C.dim }}>{n.updated}</div>
+                    {n.tags && <div style={{ fontSize: 9, color: C.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.tags}</div>}
                   </div>
                 ))}
               </div>
-              <div style={{ padding:"8px 12px", borderTop:`1px solid ${C.border}`, fontSize:10, color:C.dim }}>{notes.length} {notes.length===1?"note":"notes"}</div>
+              <div style={{ padding: "8px 12px", borderTop: `1px solid ${C.border}`, fontSize: 10, color: C.dim }}>{notes.length} {notes.length === 1 ? "note" : "notes"}</div>
             </div>
           )}
 
-          {/* Editor pane */}
-          <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", background:C.surface }}>
+          {/* Editor */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: C.surface }}>
             {activeNote ? (
               <>
                 {/* Toolbar */}
-                <div style={{ padding:"8px 14px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:6, flexShrink:0, background:"#07071a", flexWrap:"wrap" }}>
-                  {isFullscreen && <button onClick={()=>setIsFullscreen(false)} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:12, fontFamily:"inherit", marginRight:4 }}>← Back</button>}
-                  <input value={noteTitle} onChange={e=>setNoteTitle(e.target.value)} placeholder="Untitled" style={{ background:"transparent", border:"none", color:C.text, fontSize:14, fontWeight:600, outline:"none", flex:1, minWidth:80, fontFamily:"inherit" }} />
-                  <div style={{ display:"flex", gap:5, flexShrink:0, alignItems:"center", position:"relative" }}>
-                    <button onClick={()=>setIsPreview(!isPreview)} style={{ background:isPreview?C.accentGlow:"transparent", border:`1px solid ${isPreview?C.borderHi:C.border}`, color:isPreview?C.accent:C.muted, padding:"3px 9px", borderRadius:3, fontSize:10, cursor:"pointer", fontFamily:"inherit" }}>{isPreview?"Edit":"Read"}</button>
-                    <button onClick={()=>setShowSettings(!showSettings)} style={{ background:showSettings?C.accentGlow:"transparent", border:`1px solid ${showSettings?C.borderHi:C.border}`, color:showSettings?C.accent:C.muted, padding:"3px 8px", borderRadius:3, fontSize:10, cursor:"pointer" }} title="Font settings">Aa</button>
-                    <button onClick={()=>setIsFullscreen(!isFullscreen)} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.muted, padding:"3px 8px", borderRadius:3, fontSize:11, cursor:"pointer" }}>{isFullscreen?"⊡":"⛶"}</button>
+                <div style={{ padding: "8px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 6, flexShrink: 0, background: "#07071a", flexWrap: "wrap" }}>
+                  {isFullscreen && <button onClick={() => setIsFullscreen(false)} style={{ background: "transparent", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, fontFamily: "inherit", marginRight: 6 }}>← Back</button>}
+                  <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Untitled" style={{ background: "transparent", border: "none", color: C.text, fontSize: 15, fontWeight: 700, outline: "none", flex: 1, minWidth: 80, fontFamily: "inherit" }} />
+                  <div style={{ display: "flex", gap: 5, alignItems: "center", position: "relative" }}>
+                    <button onClick={() => setIsPreview(p => !p)} style={{ background: isPreview ? C.accentGlow : "transparent", border: `1px solid ${isPreview ? C.borderHi : C.border}`, color: isPreview ? C.accent : C.muted, padding: "4px 10px", borderRadius: 3, fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>{isPreview ? "Edit" : "Read"}</button>
+                    <button onClick={() => { setShowTypo(p => !p); }} style={{ background: showTypo ? C.accentGlow : "transparent", border: `1px solid ${showTypo ? C.borderHi : C.border}`, color: showTypo ? C.accent : C.muted, padding: "4px 10px", borderRadius: 3, fontSize: 10, cursor: "pointer" }}>Aa</button>
+                    <button onClick={() => setIsFullscreen(p => !p)} style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.muted, padding: "4px 8px", borderRadius: 3, fontSize: 11, cursor: "pointer" }}>{isFullscreen ? "⊡" : "⛶"}</button>
                     <Btn size="sm" variant="primary" onClick={saveNote}>Save</Btn>
-                    {activeNote.id!=="new"&&<Btn size="sm" variant="danger" onClick={()=>deleteNote(activeNote.id)}>Delete</Btn>}
-                    {!isFullscreen&&<button onClick={()=>setActiveNote(null)} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:18, padding:"0 2px" }}>×</button>}
-                    {showSettings && <FontSettings />}
+                    {activeNote.id !== "new" && <Btn size="sm" variant="danger" onClick={() => deleteNote(activeNote.id)}>Del</Btn>}
+                    {!isFullscreen && <button onClick={() => setActiveNote(null)} style={{ background: "transparent", border: "none", color: C.muted, cursor: "pointer", fontSize: 20, padding: "0 2px" }}>×</button>}
+                    {showTypo && <TypoPanel />}
                   </div>
                 </div>
+
                 {/* Tags */}
-                <div style={{ padding:"5px 16px", borderBottom:`1px solid ${C.border}`, background:"#07071a", flexShrink:0 }}>
-                  <input value={noteTags} onChange={e=>setNoteTags(e.target.value)} placeholder="tags: #work #ideas..." style={{ width:"100%", background:"transparent", border:"none", color:C.muted, fontSize:11, outline:"none", fontFamily:"'JetBrains Mono',monospace" }} />
+                <div style={{ padding: "5px 16px", borderBottom: `1px solid ${C.border}`, background: "#07071a", flexShrink: 0 }}>
+                  <input value={tags} onChange={e => setTags(e.target.value)} placeholder="tags: #work #ideas..." style={{ width: "100%", background: "transparent", border: "none", color: C.muted, fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono',monospace" }} />
                 </div>
+
                 {/* Content */}
-                <div style={{ flex:1, overflow:"auto", padding:"20px 28px" }}>
-                  {isPreview
-                    ? <div style={{ maxWidth:720, margin:"0 auto" }}>{noteBlocks.map(b=><BlockPreview key={b.id} block={b} />)}</div>
-                    : <div style={{ maxWidth:720, margin:"0 auto" }}>
-                        {noteBlocks.map(b=><BlockEditor key={b.id} block={b} afterId={b.id} />)}
-                        {/* Add block at end */}
-                        <div style={{ display:"flex", gap:8, marginTop:12, paddingTop:12, borderTop:`1px dashed rgba(30,60,120,0.2)` }}>
-                          <button onClick={()=>addBlockAtEnd(mkBlock("text",""))} style={{ background:"transparent", border:`1px dashed ${C.border}`, color:C.dim, padding:"5px 12px", borderRadius:4, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>+ Text</button>
-                          <button onClick={()=>{setInsertAfter("__end__");noteFileRef.current.click();}} style={{ background:"transparent", border:`1px dashed ${C.border}`, color:C.dim, padding:"5px 12px", borderRadius:4, fontSize:11, cursor:"pointer" }}>+ Image/Video</button>
-                          <div style={{ display:"flex", gap:4, flex:1 }}>
-                            <input value={insertAfter==="__end__"?"":urlDraft} onChange={e=>{setUrlDraft(e.target.value);setInsertAfter("__end__");}} placeholder="+ Paste URL to embed..." onKeyDown={e=>e.key==="Enter"&&insertUrl(null)} style={{ flex:1, background:"rgba(255,255,255,0.04)", border:`1px dashed ${C.border}`, borderRadius:4, color:C.text, padding:"5px 8px", fontSize:11, outline:"none", fontFamily:"inherit" }} />
-                          </div>
-                        </div>
-                        <input ref={noteFileRef} type="file" multiple accept="image/*,video/*" style={{ display:"none" }} onChange={e=>handleNoteFile(e, insertAfter==="__end__"?null:insertAfter)} />
+                <div style={{ flex: 1, overflow: "auto", padding: "24px 32px" }} onClick={() => setShowTypo(false)}>
+                  {isPreview ? (
+                    <div style={{ maxWidth: 720, margin: "0 auto" }}>
+                      <h1 style={{ ...editorStyle, fontSize: Math.max(typo.size * 1.6, 24), fontWeight: 700, marginBottom: 24, color: "#eef" }}>{title || "Untitled"}</h1>
+                      {blocks.map(b => <BlockPreview key={b.id} block={b} />)}
+                    </div>
+                  ) : (
+                    <div style={{ maxWidth: 720, margin: "0 auto" }}>
+                      {blocks.map(b => <BlockInlineEditor key={b.id} block={b} />)}
+                      {/* Add at end */}
+                      <div style={{ display: "flex", gap: 6, marginTop: 16, paddingTop: 12, borderTop: `1px dashed rgba(30,60,120,0.2)` }}>
+                        <button onClick={() => addEnd(mkBlock("text", ""))} style={{ background: "transparent", border: `1px dashed ${C.border}`, color: C.dim, padding: "5px 14px", borderRadius: 4, fontSize: 11, cursor: "pointer" }}>+ Text</button>
+                        <button onClick={() => addEnd(mkBlock("divider"))} style={{ background: "transparent", border: `1px dashed ${C.border}`, color: C.dim, padding: "5px 14px", borderRadius: 4, fontSize: 11, cursor: "pointer" }}>— Divider</button>
+                        <button onClick={() => addEnd(mkBlock("quote"))} style={{ background: "transparent", border: `1px dashed ${C.border}`, color: C.dim, padding: "5px 14px", borderRadius: 4, fontSize: 11, cursor: "pointer" }}>" Quote</button>
+                        <button onClick={() => { insertTargetRef.current = null; fileRef.current.click(); }} style={{ background: "transparent", border: `1px dashed ${C.border}`, color: C.dim, padding: "5px 14px", borderRadius: 4, fontSize: 11, cursor: "pointer" }}>📎 Media</button>
                       </div>
-                  }
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
-              <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", color:C.dim, gap:12 }}>
-                <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="10" y="8" width="28" height="32" rx="3" stroke={C.dim} strokeWidth="1.5"/><line x1="16" y1="16" x2="32" y2="16" stroke={C.dim} strokeWidth="1.5"/><line x1="16" y1="22" x2="32" y2="22" stroke={C.dim} strokeWidth="1.5"/><line x1="16" y1="28" x2="24" y2="28" stroke={C.dim} strokeWidth="1.5"/></svg>
-                <div style={{ fontSize:13 }}>Select a note or</div>
-                <button onClick={newNote} style={{ background:C.accentGlow, border:`1px solid ${C.borderHi}`, color:C.accent, padding:"7px 20px", borderRadius:4, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>New Note</button>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
+                <svg width="52" height="52" viewBox="0 0 52 52" fill="none"><rect x="10" y="8" width="32" height="36" rx="3" stroke={C.dim} strokeWidth="1.5" /><line x1="17" y1="18" x2="35" y2="18" stroke={C.dim} strokeWidth="1.5" /><line x1="17" y1="25" x2="35" y2="25" stroke={C.dim} strokeWidth="1.5" /><line x1="17" y1="32" x2="26" y2="32" stroke={C.dim} strokeWidth="1.5" /></svg>
+                <div style={{ color: C.dim, fontSize: 13 }}>Select a note or create a new one</div>
+                <button onClick={newNote} style={{ background: C.accentGlow, border: `1px solid ${C.borderHi}`, color: C.accent, padding: "8px 22px", borderRadius: 5, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>New Note</button>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* ── JOURNAL ── */}
-      {subTab==="journal" && (
+      {/* JOURNAL */}
+      {subTab === "journal" && (
         <>
-          {journalView==="list" && (
-            <div style={{ maxWidth:680, margin:"0 auto" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
-                <div><div style={{ fontSize:20, fontWeight:700 }}>Journal</div><div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{posts.length} {posts.length===1?"entry":"entries"}</div></div>
-                <Btn variant="primary" onClick={()=>{setJTitle("");setJBody("");setJMood("Neutral");setJAttachments([]);setJournalView("write");}}>+ New Entry</Btn>
+          {jView === "list" && (
+            <div style={{ maxWidth: 680, margin: "0 auto" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <div><div style={{ fontSize: 20, fontWeight: 700 }}>Journal</div><div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{posts.length} {posts.length === 1 ? "entry" : "entries"}</div></div>
+                <Btn variant="primary" onClick={() => { setJTitle(""); setJBody(""); setJMood("Neutral"); setJView("write"); }}>+ New Entry</Btn>
               </div>
-              {posts.length>4&&<Input value={jSearch} onChange={e=>setJSearch(e.target.value)} placeholder="Search..." style={{ marginBottom:14 }} />}
-              {filteredPosts.length===0&&<Card style={{ textAlign:"center", padding:"40px 20px" }}><div style={{ color:C.dim, fontSize:13 }}>{posts.length===0?"No entries yet.":"No results"}</div></Card>}
-              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                {filteredPosts.map(post=>(
-                  <Card key={post.id} onClick={()=>{setActivePost(post);setJournalView("read");}}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}><div style={{ fontSize:14, fontWeight:600 }}>{post.title}</div><span onClick={e=>{e.stopPropagation();setPosts(posts.filter(p=>p.id!==post.id));}} style={{ color:C.dim, cursor:"pointer", fontSize:18, padding:"0 4px" }}>×</span></div>
-                    <div style={{ fontSize:12, color:C.muted, lineHeight:1.6, marginBottom:10, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>{post.body}</div>
-                    <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ fontSize:11, color:C.dim }}>{post.date}</span><span style={{ fontSize:11, color:C.dim }}>{post.wordCount} words · {post.mood}</span></div>
+              {posts.length > 4 && <Input value={jSearch} onChange={e => setJSearch(e.target.value)} placeholder="Search..." style={{ marginBottom: 14 }} />}
+              {filteredPosts.length === 0 && <Card style={{ textAlign: "center", padding: "40px 20px" }}><div style={{ color: C.dim }}>{posts.length === 0 ? "No entries yet." : "No results."}</div></Card>}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {filteredPosts.map(p => (
+                  <Card key={p.id} onClick={() => { setJActive(p); setJView("read"); }} style={{ cursor: "pointer" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}><div style={{ fontSize: 14, fontWeight: 600 }}>{p.title}</div><span onClick={e => { e.stopPropagation(); setPosts(posts.filter(x => x.id !== p.id)); }} style={{ color: C.dim, cursor: "pointer", fontSize: 18 }}>×</span></div>
+                    <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginBottom: 8, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.body}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 11, color: C.dim }}>{p.date}</span><span style={{ fontSize: 11, color: C.dim }}>{p.wordCount} words · {p.mood}</span></div>
                   </Card>
                 ))}
               </div>
             </div>
           )}
-          {journalView==="write" && (
-            <div style={{ maxWidth:680, margin:"0 auto" }}>
-              <div style={{ marginBottom:20 }}><Btn size="sm" variant="ghost" onClick={()=>setJournalView("list")}>← Back</Btn></div>
+          {jView === "write" && (
+            <div style={{ maxWidth: 680, margin: "0 auto" }}>
+              <div style={{ marginBottom: 20 }}><Btn size="sm" variant="ghost" onClick={() => setJView("list")}>← Back</Btn></div>
               <Card>
-                <input value={jTitle} onChange={e=>setJTitle(e.target.value)} placeholder="Title..." style={{ width:"100%", background:"transparent", border:"none", borderBottom:`1px solid ${C.border}`, color:C.text, padding:"4px 0 12px", fontSize:22, fontWeight:700, outline:"none", marginBottom:16, fontFamily:"inherit" }} />
-                <div style={{ marginBottom:14 }}><Label style={{ marginBottom:8 }}>Mood</Label><div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>{moods.map(m=><button key={m} onClick={()=>setJMood(m)} style={{ padding:"4px 12px", borderRadius:3, fontSize:11, cursor:"pointer", fontFamily:"inherit", background:jMood===m?C.accentGlow:"transparent", border:`1px solid ${jMood===m?C.borderHi:C.border}`, color:jMood===m?C.accent:C.muted }}>{m}</button>)}</div></div>
-                <textarea value={jBody} onChange={e=>setJBody(e.target.value)} placeholder="What's on your mind..." autoFocus style={{ width:"100%", background:"transparent", border:"none", color:C.text, fontSize:14, lineHeight:1.8, outline:"none", resize:"vertical", minHeight:240, fontFamily:"inherit" }} />
-                <div style={{ marginTop:12, paddingTop:12, borderTop:`1px solid ${C.border}` }}>
-                  <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:8 }}>
-                    <Btn size="sm" variant="ghost" onClick={()=>jFileRef.current.click()}>+ Photo / Video / File</Btn>
-                    <div style={{ display:"flex", gap:6, flex:1, minWidth:180 }}>
-                      <Input value={jUrlInput} onChange={e=>setJUrlInput(e.target.value)} placeholder="Paste URL..." style={{ flex:1, fontSize:12 }} onKeyDown={e=>e.key==="Enter"&&addJUrl()} />
-                      <Btn size="sm" onClick={addJUrl}>Add</Btn>
-                    </div>
-                  </div>
-                  <input ref={jFileRef} type="file" multiple accept="image/*,video/*,.pdf,.txt" style={{ display:"none" }} onChange={handleJFile} />
-                  {jAttachments.length>0&&<div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:8 }}>{jAttachments.map((a,i)=><div key={i} style={{ position:"relative", background:C.surface2, border:`1px solid ${C.border}`, borderRadius:6, overflow:"hidden" }}>{a.type==="image"&&<img src={a.data} alt={a.name} style={{ width:80, height:60, objectFit:"cover", display:"block" }} />}{a.type==="url"&&<a href={a.data} target="_blank" rel="noopener noreferrer" style={{ display:"block", padding:"6px 10px", fontSize:11, color:C.accent, maxWidth:160 }}>{a.name}</a>}<div onClick={()=>setJAttachments(prev=>prev.filter((_,idx)=>idx!==i))} style={{ position:"absolute", top:2, right:2, background:"rgba(0,0,0,0.7)", color:"#fff", borderRadius:"50%", width:16, height:16, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:10 }}>×</div></div>)}</div>}
-                </div>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:16, paddingTop:14, borderTop:`1px solid ${C.border}` }}><span style={{ fontSize:12, color:C.dim }}>{jBody.trim()?jBody.trim().split(/\s+/).length:0} words</span><Btn variant="primary" onClick={saveJournal} disabled={!jBody.trim()}>Save Entry</Btn></div>
+                <input value={jTitle} onChange={e => setJTitle(e.target.value)} placeholder="Title..." style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`, color: C.text, padding: "4px 0 12px", fontSize: 22, fontWeight: 700, outline: "none", marginBottom: 16, fontFamily: "inherit" }} />
+                <div style={{ marginBottom: 14 }}><Label style={{ marginBottom: 8 }}>Mood</Label><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{moods.map(m => <button key={m} onClick={() => setJMood(m)} style={{ padding: "4px 12px", borderRadius: 3, fontSize: 11, cursor: "pointer", fontFamily: "inherit", background: jMood === m ? C.accentGlow : "transparent", border: `1px solid ${jMood === m ? C.borderHi : C.border}`, color: jMood === m ? C.accent : C.muted }}>{m}</button>)}</div></div>
+                <textarea value={jBody} onChange={e => setJBody(e.target.value)} placeholder="What's on your mind..." autoFocus style={{ width: "100%", background: "transparent", border: "none", color: C.text, fontSize: 14, lineHeight: 1.8, outline: "none", resize: "vertical", minHeight: 240, fontFamily: "inherit" }} />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}` }}><span style={{ fontSize: 12, color: C.dim }}>{jBody.trim() ? jBody.trim().split(/\s+/).length : 0} words</span><Btn variant="primary" onClick={saveJournal} disabled={!jBody.trim()}>Save Entry</Btn></div>
               </Card>
             </div>
           )}
-          {journalView==="read" && activePost && (
-            <div style={{ maxWidth:680, margin:"0 auto" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}><Btn size="sm" variant="ghost" onClick={()=>{setJournalView("list");setActivePost(null);}}>← Back</Btn><Btn size="sm" variant="danger" onClick={()=>{setPosts(posts.filter(p=>p.id!==activePost.id));setJournalView("list");setActivePost(null);}}>Delete</Btn></div>
-              <Card><div style={{ fontSize:11, color:C.muted, fontFamily:"'JetBrains Mono',monospace", marginBottom:8 }}>{activePost.date} · {activePost.wordCount} words · {activePost.mood}</div><h1 style={{ fontSize:24, fontWeight:700, marginBottom:24 }}>{activePost.title}</h1><div style={{ fontSize:15, color:"#c0c8e0", lineHeight:1.9, whiteSpace:"pre-wrap" }}>{activePost.body}</div></Card>
+          {jView === "read" && jActive && (
+            <div style={{ maxWidth: 680, margin: "0 auto" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 24 }}><Btn size="sm" variant="ghost" onClick={() => { setJView("list"); setJActive(null); }}>← Back</Btn><Btn size="sm" variant="danger" onClick={() => { setPosts(posts.filter(p => p.id !== jActive.id)); setJView("list"); setJActive(null); }}>Delete</Btn></div>
+              <Card><div style={{ fontSize: 11, color: C.muted, fontFamily: "'JetBrains Mono',monospace", marginBottom: 8 }}>{jActive.date} · {jActive.wordCount} words · {jActive.mood}</div><h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 20 }}>{jActive.title}</h1><div style={{ fontSize: 15, color: "#c0c8e0", lineHeight: 1.9, whiteSpace: "pre-wrap" }}>{jActive.body}</div></Card>
             </div>
           )}
         </>
@@ -1120,142 +1389,262 @@ const NotesAndJournal = ({ userId }) => {
   );
 };
 
-// ─── APP ─────────────────────────────────────────────────────────────────────
-export default function App() {
-  const [user, setUser] = useState(() => { const s=JSON.parse(localStorage.getItem("sb_session")||"null"); return s?.user||null; });
-  const [tab, setTab] = useState("home");
-  const [showReport, setShowReport] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const logout = () => { localStorage.removeItem("sb_session"); setUser(null); };
-  const [bgTheme, setBgTheme] = useSynced("bg_theme", "default", user?.id);
+// ─── EVENING REPORT ───────────────────────────────────────────────────────────
+const EveningReport = ({ onClose, userId }) => {
+  const [report, setReport] = useState(""); const [loading, setLoading] = useState(true); const [saved, setSaved] = useState(false);
+  const [water] = useSynced(`water_${todayKey()}`, 0, userId);
+  const [calories] = useSynced(`calories_${todayKey()}`, [], userId);
+  const [todos] = useSynced("todos", [], userId);
+  const [plans] = useSynced("workout_plans", [], userId);
+  const [notes] = useSynced("obsidian_notes", [], userId);
+  const [archive, setArchive] = useSynced("report_archive", [], userId);
 
-  if (!user) return <AuthScreen onLogin={u=>setUser(u)} />;
+  useEffect(() => {
+    (async () => {
+      const cal = calories.reduce((s, e) => s + (e.cal || 0), 0);
+      const tasksDone = todos.filter(t => t.done);
+      const gymDone = plans.reduce((s, p) => s + p.exercises.filter(e => e.done).length, 0);
+      const gymTotal = plans.reduce((s, p) => s + p.exercises.length, 0);
+      const todayNotes = notes.filter(n => n.updated === new Date().toLocaleDateString()).map(n => n.title).join(", ");
+      const calItems = calories.map(e => `${e.name} (${e.cal}kcal)`).join(", ");
+      const doneList = tasksDone.map(t => t.text).join(", ");
+      const prompt = `Write Vince's end-of-day report. Be warm, direct, and specific.
 
-  const tabs = [
-    { id:"home", label:"Home" },
-    { id:"fitness", label:"Fitness" },
-    { id:"food", label:"Food" },
-    { id:"logs", label:"Logs" },
-    { id:"goals", label:"Goals" },
-    { id:"focus", label:"Focus" },
-    { id:"bible", label:"Bible" },
-    { id:"notes", label:"Notes" },
-    { id:"archive", label:"Archive" },
-  ];
+TODAY'S DATA:
+- Water: ${water}/8 cups
+- Calories: ${cal} kcal (${calItems || "none logged"})
+- Tasks done: ${tasksDone.length}/${todos.length}${doneList ? ` — ${doneList}` : ""}
+- Workout: ${gymDone}/${gymTotal} exercises
+- Notes written today: ${todayNotes || "none"}
 
-  const bgThemes = {
-    default: { bg:C.bg, grid:C.border, glow:C.blueGlow },
-    midnight: { bg:"#000008", grid:"rgba(20,0,60,0.6)", glow:"rgba(80,0,200,0.15)" },
-    forest: { bg:"#030e06", grid:"rgba(0,40,10,0.5)", glow:"rgba(0,120,40,0.12)" },
-    crimson: { bg:"#0a0003", grid:"rgba(60,0,10,0.5)", glow:"rgba(180,0,40,0.12)" },
-    slate: { bg:"#060810", grid:"rgba(20,30,60,0.5)", glow:"rgba(60,80,160,0.12)" },
-    obsidian: { bg:"#050505", grid:"rgba(30,30,30,0.4)", glow:"rgba(120,120,120,0.08)" },
+Write 4-5 sentences: 1) what was actually completed (be specific), 2) what was light, 3) one clear nudge for tomorrow. Warm, honest, no fluff.`;
+      const res = await callAI(prompt, "Personal AI companion for Vince. Brief, warm, specific.");
+      setReport(res); setLoading(false);
+    })();
+  }, []);
+
+  const saveToArchive = () => {
+    const dateLabel = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    const entry = { id: Date.now(), date: dateLabel, dateKey: todayKey(), report, savedAt: new Date().toISOString() };
+    setArchive([entry, ...archive.filter(a => a.dateKey !== todayKey())]);
+    setSaved(true);
   };
-  const theme = bgThemes[bgTheme] || bgThemes.default;
-  const currentTab = tabs.find(t=>t.id===tab);
 
   return (
-    <div style={{ minHeight:"100vh", background:theme.bg, position:"relative" }}>
-      <style>{css}</style>
-      <div style={{ position:"fixed", inset:0, backgroundImage:`linear-gradient(${theme.grid} 1px,transparent 1px),linear-gradient(90deg,${theme.grid} 1px,transparent 1px)`, backgroundSize:"60px 60px", pointerEvents:"none", zIndex:0, opacity:0.4 }} />
-      <div style={{ position:"fixed", top:0, left:"50%", transform:"translateX(-50%)", width:600, height:300, background:`radial-gradient(ellipse,${theme.glow} 0%,transparent 70%)`, pointerEvents:"none", zIndex:0 }} />
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.95)", backdropFilter: "blur(12px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }} className="fade-in">
+      <div style={{ width: "100%", maxWidth: 480 }}>
+        <Card style={{ boxShadow: `0 0 40px ${C.blueGlow}` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.06em" }}>End of Day Report</div>
+            <span onClick={onClose} style={{ color: C.muted, cursor: "pointer", fontSize: 22 }}>×</span>
+          </div>
+          <div style={{ fontSize: 11, color: C.dim, fontFamily: "'JetBrains Mono',monospace", marginBottom: 14 }}>{new Date().toDateString().toUpperCase()}</div>
+          {loading ? <div style={{ display: "flex", alignItems: "center", gap: 10, color: C.muted, fontSize: 13 }}><Spinner /> Generating your daily recap...</div>
+            : <div style={{ fontSize: 14, color: "#c0c8e0", lineHeight: 1.9, whiteSpace: "pre-wrap" }}>{report}</div>}
+          <div style={{ marginTop: 18, display: "flex", gap: 8 }}>
+            {!loading && !saved && <Btn variant="primary" onClick={saveToArchive}>Save to Archive</Btn>}
+            {saved && <div style={{ fontSize: 12, color: "#50c878", display: "flex", alignItems: "center", gap: 6 }}>✓ Saved to Archive</div>}
+            <Btn onClick={onClose}>Close</Btn>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+};
 
-      <header style={{ position:"sticky", top:0, zIndex:100, background:"rgba(3,3,10,0.97)", backdropFilter:"blur(20px)", borderBottom:`1px solid ${C.border}` }}>
-        <div style={{ maxWidth:960, margin:"0 auto", padding:"0 20px" }}>
-          <div style={{ height:52, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-              <div style={{ display:"flex", alignItems:"center" }}>
-                <svg width="44" height="30" viewBox="0 0 220 150" style={{ filter:"drop-shadow(0 0 8px rgba(200,160,40,0.7))" }}>
-                  <defs>
-                    <radialGradient id="ovalOut" cx="50%" cy="50%" r="50%">
-                      <stop offset="0%" stopColor="#c8860a"/><stop offset="40%" stopColor="#e8a020"/><stop offset="70%" stopColor="#b06010"/><stop offset="100%" stopColor="#301000"/>
-                    </radialGradient>
-                    <radialGradient id="ovalIn" cx="50%" cy="50%" r="50%">
-                      <stop offset="0%" stopColor="#d4940e"/><stop offset="60%" stopColor="#c07808"/><stop offset="100%" stopColor="#1a0800"/>
-                    </radialGradient>
-                    <linearGradient id="ovalShine" x1="20%" y1="10%" x2="80%" y2="60%">
-                      <stop offset="0%" stopColor="rgba(255,220,100,0.55)"/><stop offset="100%" stopColor="rgba(255,180,20,0)"/>
-                    </linearGradient>
-                    <clipPath id="innerOval"><ellipse cx="110" cy="75" rx="85" ry="50"/></clipPath>
-                  </defs>
-                  <ellipse cx="110" cy="75" rx="108" ry="68" fill="url(#ovalOut)"/>
-                  <ellipse cx="110" cy="75" rx="98" ry="60" fill="#0a0500"/>
-                  <ellipse cx="110" cy="75" rx="85" ry="50" fill="url(#ovalIn)"/>
-                  <g clipPath="url(#innerOval)" fill="#050200">
-                    <ellipse cx="110" cy="82" rx="18" ry="22"/>
-                    <polygon points="110,30 103,52 117,52"/>
-                    <polygon points="98,36 88,52 108,52"/>
-                    <polygon points="122,36 112,52 132,52"/>
-                    <path d="M92 68 C75 55 45 48 25 60 C35 60 45 64 50 70 C38 68 28 72 22 80 C34 76 46 75 55 78 C48 82 42 90 44 100 C50 92 58 86 68 82 C72 88 74 96 74 104 C76 96 78 88 82 82 C88 86 92 90 92 96 Z"/>
-                    <path d="M128 68 C145 55 175 48 195 60 C185 60 175 64 170 70 C182 68 192 72 198 80 C186 76 174 75 165 78 C172 82 178 90 176 100 C170 92 162 86 152 82 C148 88 146 96 146 104 C144 96 142 88 138 82 C132 86 128 90 128 96 Z"/>
-                    <path d="M102 104 C105 96 110 92 110 92 C110 92 115 96 118 104 C115 100 110 98 110 98 C110 98 105 100 102 104 Z" fill="#c07808"/>
-                  </g>
-                  <ellipse cx="110" cy="75" rx="85" ry="50" fill="url(#ovalShine)"/>
-                  <ellipse cx="110" cy="75" rx="108" ry="68" fill="none" stroke="rgba(255,220,80,0.3)" strokeWidth="2"/>
-                </svg>
-              </div>
+// ─── REPORT ARCHIVE ──────────────────────────────────────────────────────────
+const ReportArchive = ({ userId }) => {
+  const [archive] = useSynced("report_archive", [], userId);
+  const [expanded, setExpanded] = useState(null);
+  return (
+    <div className="fade-up">
+      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Report Archive</div>
+      <div style={{ fontSize: 12, color: C.muted, marginBottom: 20 }}>{archive.length} saved {archive.length === 1 ? "report" : "reports"}</div>
+      {archive.length === 0 && <Card style={{ textAlign: "center", padding: "40px 20px" }}><div style={{ color: C.dim, fontSize: 13 }}>No reports yet. Generate your End of Day Report and save it.</div></Card>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {archive.map(entry => (
+          <Card key={entry.id} onClick={() => setExpanded(expanded === entry.id ? null : entry.id)} style={{ cursor: "pointer" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <div style={{ fontSize:10, letterSpacing:"0.12em", color:C.muted, fontFamily:"'JetBrains Mono',monospace" }}>{getGreeting()},</div>
-                <div style={{ fontSize:14, fontWeight:800, letterSpacing:"0.1em", background:C.chrome, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>VINCE</div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{entry.date}</div>
+                {expanded !== entry.id && <div style={{ fontSize: 12, color: C.muted, display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{entry.report}</div>}
+              </div>
+              <div style={{ color: C.muted, fontSize: 18, marginLeft: 12 }}>{expanded === entry.id ? "−" : "+"}</div>
+            </div>
+            {expanded === entry.id && <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}`, fontSize: 14, color: "#c0c8e0", lineHeight: 1.9, whiteSpace: "pre-wrap" }} onClick={e => e.stopPropagation()}>{entry.report}</div>}
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+
+// ─── APP ─────────────────────────────────────────────────────────────────────
+export default function App() {
+  const [user, setUser] = useState(() => { try { const s = JSON.parse(localStorage.getItem("sb_session") || "null"); return s?.user || null; } catch { return null; } });
+  const [tab, setTab] = useState("home");
+  const [showReport, setShowReport] = useState(false);
+  const [showFortune, setShowFortune] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const logout = () => { localStorage.removeItem("sb_session"); setUser(null); };
+
+  const [bgTheme, setBgTheme] = useSynced("bg_theme", { type: "color", value: "default" }, user?.id);
+  const [bgImage, setBgImage] = useSynced("bg_image", null, user?.id);
+  const bgFileRef = useRef();
+
+  if (!user) return <AuthScreen onLogin={u => setUser(u)} />;
+
+  const tabs = [
+    { id: "home", label: "Home" }, { id: "fitness", label: "Fitness" }, { id: "food", label: "Food" },
+    { id: "logs", label: "Logs" }, { id: "goals", label: "Goals" }, { id: "focus", label: "Focus" },
+    { id: "bible", label: "Bible" }, { id: "notes", label: "Notes" }, { id: "archive", label: "Archive" },
+  ];
+
+  const colorThemes = {
+    default: { bg: "#03030a", grid: "rgba(30,60,120,0.25)", glow: "rgba(74,120,255,0.18)" },
+    midnight: { bg: "#000008", grid: "rgba(20,0,60,0.5)", glow: "rgba(80,0,200,0.15)" },
+    forest: { bg: "#030e06", grid: "rgba(0,40,10,0.4)", glow: "rgba(0,120,40,0.12)" },
+    crimson: { bg: "#0a0003", grid: "rgba(60,0,10,0.4)", glow: "rgba(180,0,40,0.12)" },
+    slate: { bg: "#060810", grid: "rgba(20,30,60,0.4)", glow: "rgba(60,80,160,0.12)" },
+    obsidian: { bg: "#050505", grid: "rgba(25,25,25,0.4)", glow: "rgba(100,100,100,0.06)" },
+  };
+
+  const themeKey = bgTheme?.value || "default";
+  const theme = colorThemes[themeKey] || colorThemes.default;
+  const useImage = bgTheme?.type === "image" && bgImage;
+  const currentTab = tabs.find(t => t.id === tab);
+
+  const handleBgFile = e => {
+    const file = e.target.files[0]; if (!file) return;
+    const r = new FileReader();
+    r.onload = ev => { setBgImage(ev.target.result); setBgTheme({ type: "image", value: "custom" }); };
+    r.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const [showBgPicker, setShowBgPicker] = useState(false);
+
+  const batmanSVG = (
+    <svg width="44" height="30" viewBox="0 0 220 150" style={{ filter: "drop-shadow(0 0 8px rgba(200,160,40,0.7))" }}>
+      <defs>
+        <radialGradient id="bOuter" cx="50%" cy="40%" r="55%">
+          <stop offset="0%" stopColor="#f0b020"/><stop offset="30%" stopColor="#d89010"/><stop offset="65%" stopColor="#a06008"/><stop offset="100%" stopColor="#201000"/>
+        </radialGradient>
+        <radialGradient id="bInner" cx="48%" cy="42%" r="52%">
+          <stop offset="0%" stopColor="#e0a018"/><stop offset="50%" stopColor="#b07010"/><stop offset="100%" stopColor="#150a00"/>
+        </radialGradient>
+        <radialGradient id="bShine" cx="35%" cy="30%" r="45%">
+          <stop offset="0%" stopColor="rgba(255,240,140,0.5)"/><stop offset="100%" stopColor="rgba(255,200,40,0)"/>
+        </radialGradient>
+        <clipPath id="bClip"><ellipse cx="110" cy="75" rx="82" ry="48"/></clipPath>
+      </defs>
+      {/* Outer ring */}
+      <ellipse cx="110" cy="75" rx="106" ry="66" fill="url(#bOuter)"/>
+      {/* Black band */}
+      <ellipse cx="110" cy="75" rx="94" ry="57" fill="#080400"/>
+      {/* Gold inner */}
+      <ellipse cx="110" cy="75" rx="82" ry="48" fill="url(#bInner)"/>
+      {/* Bat silhouette */}
+      <g clipPath="url(#bClip)" fill="#060300">
+        {/* Body */}
+        <ellipse cx="110" cy="84" rx="14" ry="18"/>
+        {/* Head with ears */}
+        <path d="M104 54 L98 34 L106 50 L110 28 L114 50 L122 34 L116 54 Z"/>
+        {/* Left wing */}
+        <path d="M96 62 C80 52 52 46 28 58 C38 58 48 62 53 68 C42 66 32 70 26 78 C36 74 48 73 57 76 C51 80 45 88 47 98 C52 90 60 84 69 80 C73 86 75 94 75 102 C77 94 79 86 83 80 C88 84 94 90 96 98 Z"/>
+        {/* Right wing */}
+        <path d="M124 62 C140 52 168 46 192 58 C182 58 172 62 167 68 C178 66 188 70 194 78 C184 74 172 73 163 76 C169 80 175 88 173 98 C168 90 160 84 151 80 C147 86 145 94 145 102 C143 94 141 86 137 80 C132 84 126 90 124 98 Z"/>
+        {/* Bottom notch gold */}
+        <path d="M104 102 C107 94 110 90 110 90 C110 90 113 94 116 102 C113 99 110 97 110 97 C110 97 107 99 104 102 Z" fill="#b07010"/>
+      </g>
+      {/* Shine */}
+      <ellipse cx="110" cy="75" rx="82" ry="48" fill="url(#bShine)"/>
+      {/* Rim highlight */}
+      <ellipse cx="110" cy="75" rx="106" ry="66" fill="none" stroke="rgba(255,210,60,0.35)" strokeWidth="1.5"/>
+    </svg>
+  );
+
+  return (
+    <div style={{ minHeight: "100vh", background: useImage ? "transparent" : theme.bg, position: "relative" }}>
+      <style>{css}</style>
+      {useImage
+        ? <div style={{ position: "fixed", inset: 0, backgroundImage: `url(${bgImage})`, backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "fixed", zIndex: 0 }}><div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.55)" }} /></div>
+        : <>
+            <div style={{ position: "fixed", inset: 0, backgroundImage: `linear-gradient(${theme.grid} 1px,transparent 1px),linear-gradient(90deg,${theme.grid} 1px,transparent 1px)`, backgroundSize: "60px 60px", pointerEvents: "none", zIndex: 0, opacity: 0.4 }} />
+            <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: 600, height: 300, background: `radial-gradient(ellipse,${theme.glow} 0%,transparent 70%)`, pointerEvents: "none", zIndex: 0 }} />
+          </>
+      }
+
+      {/* Header */}
+      <header style={{ position: "sticky", top: 0, zIndex: 100, background: "rgba(3,3,10,0.97)", backdropFilter: "blur(20px)", borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ maxWidth: 960, margin: "0 auto", padding: "0 20px" }}>
+          <div style={{ height: 52, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            {/* Logo + greeting */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {batmanSVG}
+              <div>
+                <div style={{ fontSize: 10, letterSpacing: "0.12em", color: C.muted, fontFamily: "'JetBrains Mono',monospace" }}>{getGreeting()},</div>
+                <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.1em", background: C.chrome, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>VINCE</div>
               </div>
             </div>
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <FortuneCookie />
-              <Btn size="sm" variant="primary" onClick={()=>setShowReport(true)}>Report</Btn>
-              {/* Theme picker */}
-              <div style={{ position:"relative" }} id="theme-picker">
-                <button onClick={()=>document.getElementById("theme-dropdown").classList.toggle("open")} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.muted, borderRadius:4, padding:"4px 8px", cursor:"pointer", fontSize:11 }} title="Change background">🎨</button>
-                <div id="theme-dropdown" style={{ position:"absolute", right:0, top:"calc(100% + 6px)", background:"#0a0a1e", border:`1px solid ${C.borderHi}`, borderRadius:8, padding:10, zIndex:200, display:"none", minWidth:140 }}>
-                  <style>{`#theme-dropdown.open{display:block!important}`}</style>
-                  <div style={{ fontSize:10, color:C.dim, marginBottom:6, letterSpacing:"0.1em" }}>BACKGROUND</div>
-                  {Object.keys(bgThemes).map(k=>(
-                    <button key={k} onClick={()=>{setBgTheme(k);document.getElementById("theme-dropdown").classList.remove("open");}} style={{ display:"block", width:"100%", textAlign:"left", padding:"5px 8px", borderRadius:3, border:`1px solid ${bgTheme===k?C.borderHi:C.border}`, background:bgTheme===k?C.accentGlow:"transparent", color:bgTheme===k?C.accent:C.muted, fontSize:11, cursor:"pointer", marginBottom:3, textTransform:"capitalize" }}>{k}</button>
-                  ))}
-                </div>
+            {/* Header actions */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <FortuneCookie onOpen={() => setShowFortune(true)} />
+              <Btn size="sm" variant="primary" onClick={() => setShowReport(true)}>Report</Btn>
+              {/* BG button */}
+              <div style={{ position: "relative" }}>
+                <button onClick={() => setShowBgPicker(p => !p)} style={{ background: showBgPicker ? C.accentGlow : "transparent", border: `1px solid ${showBgPicker ? C.borderHi : C.border}`, color: showBgPicker ? C.accent : C.muted, borderRadius: 4, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>BG</button>
+                {showBgPicker && (
+                  <div style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", background: "#08081c", border: `1px solid ${C.borderHi}`, borderRadius: 10, padding: 14, zIndex: 200, minWidth: 180, boxShadow: "0 12px 40px rgba(0,0,0,0.7)" }}>
+                    <div style={{ fontSize: 10, color: C.dim, marginBottom: 8, letterSpacing: "0.1em" }}>BACKGROUND</div>
+                    {Object.keys(colorThemes).map(k => (
+                      <button key={k} onClick={() => { setBgTheme({ type: "color", value: k }); setShowBgPicker(false); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "5px 8px", borderRadius: 4, border: `1px solid ${themeKey === k && bgTheme?.type === "color" ? C.borderHi : "transparent"}`, background: themeKey === k && bgTheme?.type === "color" ? C.accentGlow : "transparent", color: themeKey === k && bgTheme?.type === "color" ? C.accent : C.muted, fontSize: 11, cursor: "pointer", marginBottom: 2, textTransform: "capitalize", fontFamily: "inherit" }}>{k}</button>
+                    ))}
+                    <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 8, paddingTop: 8 }}>
+                      <button onClick={() => { bgFileRef.current.click(); setShowBgPicker(false); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "5px 8px", borderRadius: 4, border: `1px solid ${bgTheme?.type === "image" ? C.borderHi : "transparent"}`, background: bgTheme?.type === "image" ? C.accentGlow : "transparent", color: bgTheme?.type === "image" ? C.accent : C.muted, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>Upload Image...</button>
+                      {bgTheme?.type === "image" && <button onClick={() => { setBgTheme({ type: "color", value: "default" }); setBgImage(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "5px 8px", borderRadius: 4, border: "none", background: "transparent", color: "#f08080", fontSize: 11, cursor: "pointer", fontFamily: "inherit", marginTop: 2 }}>Remove Image</button>}
+                    </div>
+                  </div>
+                )}
+                <input ref={bgFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleBgFile} />
               </div>
               <Btn size="sm" variant="ghost" onClick={logout}>Exit</Btn>
             </div>
           </div>
           {/* Desktop nav */}
-          <div style={{ display:"flex", borderTop:`1px solid ${C.border}`, overflowX:"auto" }} id="desktop-nav">
-            {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{ padding:"10px 14px", fontSize:11, fontWeight:500, cursor:"pointer", transition:"all 0.15s", whiteSpace:"nowrap", background:"transparent", border:"none", borderBottom:`2px solid ${tab===t.id?C.accent:"transparent"}`, color:tab===t.id?C.accent:C.muted, fontFamily:"inherit", letterSpacing:"0.04em" }}>{t.label}</button>)}
+          <div style={{ display: "flex", borderTop: `1px solid ${C.border}`, overflowX: "auto" }} id="desktop-nav">
+            {tabs.map(t => <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "10px 14px", fontSize: 11, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap", background: "transparent", border: "none", borderBottom: `2px solid ${tab === t.id ? C.accent : "transparent"}`, color: tab === t.id ? C.accent : C.muted, fontFamily: "inherit", letterSpacing: "0.04em", transition: "all 0.15s" }}>{t.label}</button>)}
           </div>
         </div>
       </header>
 
-      <main style={{ maxWidth:960, margin:"0 auto", padding:"24px 20px 120px", position:"relative", zIndex:1 }}>
-        {tab==="home"&&<Home userId={user.id} onNavigate={setTab}/>}
-        {tab==="fitness"&&<div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))", gap:14 }} className="fade-up"><Workout userId={user.id}/><Water userId={user.id}/><Health userId={user.id}/></div>}
-        {tab==="food"&&<div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))", gap:14 }} className="fade-up"><FoodPhoto userId={user.id}/><Calories userId={user.id}/></div>}
-        {tab==="logs"&&<Logs userId={user.id}/>}
-        {tab==="goals"&&<div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))", gap:14 }} className="fade-up"><GoalTracker userId={user.id}/></div>}
-        {tab==="focus"&&<FocusTimer userId={user.id}/>}
-        {tab==="bible"&&<Bible userId={user.id}/>}
-        {tab==="notes"&&<NotesAndJournal userId={user.id}/>}
-        {tab==="archive"&&<ReportArchive userId={user.id}/>}
+      <main style={{ maxWidth: 960, margin: "0 auto", padding: "24px 20px 120px", position: "relative", zIndex: 1 }}>
+        {tab === "home" && <Home userId={user.id} onNavigate={setTab} />}
+        {tab === "fitness" && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 14 }} className="fade-up"><Workout userId={user.id} /><Water userId={user.id} /><Health userId={user.id} /></div>}
+        {tab === "food" && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 14 }} className="fade-up"><FoodPhoto userId={user.id} /><Calories userId={user.id} /></div>}
+        {tab === "logs" && <Logs userId={user.id} />}
+        {tab === "goals" && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 14 }} className="fade-up"><GoalTracker userId={user.id} /></div>}
+        {tab === "focus" && <FocusTimer userId={user.id} />}
+        {tab === "bible" && <Bible userId={user.id} />}
+        {tab === "notes" && <NotesAndJournal userId={user.id} />}
+        {tab === "archive" && <ReportArchive userId={user.id} />}
       </main>
 
-      {/* ── MOBILE: hamburger dropdown nav ── */}
-      <div id="mobile-nav-container" style={{ display:"none" }}>
-        {/* Fixed bottom bar with hamburger */}
-        <div style={{ position:"fixed", bottom:0, left:0, right:0, background:"rgba(3,3,10,0.98)", backdropFilter:"blur(20px)", borderTop:`1px solid ${C.border}`, zIndex:100, padding:"0 16px", paddingBottom:"max(12px, env(safe-area-inset-bottom))", display:"flex", alignItems:"center", justifyContent:"space-between", height:56 }}>
-          <div style={{ fontSize:12, fontWeight:600, color:C.accent, letterSpacing:"0.04em" }}>{currentTab?.label||"Home"}</div>
-          <button onClick={()=>setMobileMenuOpen(o=>!o)} style={{ background:mobileMenuOpen?C.accentGlow:"transparent", border:`1px solid ${mobileMenuOpen?C.borderHi:C.border}`, borderRadius:6, color:mobileMenuOpen?C.accent:C.muted, padding:"8px 14px", cursor:"pointer", display:"flex", flexDirection:"column", gap:4, alignItems:"center", justifyContent:"center" }}>
-            <div style={{ width:18, height:1.5, background:mobileMenuOpen?C.accent:C.muted, borderRadius:2, transition:"all 0.2s", transform:mobileMenuOpen?"rotate(45deg) translate(4px,4px)":"none" }} />
-            <div style={{ width:18, height:1.5, background:mobileMenuOpen?C.accent:C.muted, borderRadius:2, transition:"all 0.2s", opacity:mobileMenuOpen?0:1 }} />
-            <div style={{ width:18, height:1.5, background:mobileMenuOpen?C.accent:C.muted, borderRadius:2, transition:"all 0.2s", transform:mobileMenuOpen?"rotate(-45deg) translate(4px,-4px)":"none" }} />
+      {/* Mobile hamburger nav */}
+      <div id="mobile-nav-wrap" style={{ display: "none" }}>
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(3,3,10,0.98)", backdropFilter: "blur(20px)", borderTop: `1px solid ${C.border}`, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px", paddingBottom: "env(safe-area-inset-bottom)", height: 56 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: C.accent }}>{currentTab?.label}</div>
+          <button onClick={() => setMobileMenuOpen(o => !o)} style={{ background: mobileMenuOpen ? C.accentGlow : "transparent", border: `1px solid ${mobileMenuOpen ? C.borderHi : C.border}`, borderRadius: 6, color: mobileMenuOpen ? C.accent : C.muted, padding: "8px 12px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 4, alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 18, height: 1.5, background: "currentColor", borderRadius: 2, transition: "all 0.2s", transform: mobileMenuOpen ? "rotate(45deg) translate(4px,4px)" : "none" }} />
+            <div style={{ width: 18, height: 1.5, background: "currentColor", borderRadius: 2, transition: "all 0.2s", opacity: mobileMenuOpen ? 0 : 1 }} />
+            <div style={{ width: 18, height: 1.5, background: "currentColor", borderRadius: 2, transition: "all 0.2s", transform: mobileMenuOpen ? "rotate(-45deg) translate(4px,-4px)" : "none" }} />
           </button>
         </div>
-
-        {/* Dropdown menu */}
         {mobileMenuOpen && (
-          <div style={{ position:"fixed", bottom:56, left:0, right:0, zIndex:99, background:"rgba(3,3,10,0.98)", backdropFilter:"blur(20px)", borderTop:`1px solid ${C.border}`, padding:"8px 0" }}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:2, padding:"0 8px" }}>
-              {tabs.map(t=>(
-                <button key={t.id} onClick={()=>{setTab(t.id);setMobileMenuOpen(false);}} style={{ padding:"12px 8px", fontSize:12, fontWeight:500, cursor:"pointer", background:tab===t.id?C.accentGlow:"transparent", border:`1px solid ${tab===t.id?C.borderHi:"transparent"}`, borderRadius:6, color:tab===t.id?C.accent:C.muted, fontFamily:"inherit", textAlign:"center", transition:"all 0.15s", margin:2 }}>
-                  {t.label}
-                </button>
-              ))}
+          <div style={{ position: "fixed", bottom: 56, left: 0, right: 0, zIndex: 99, background: "rgba(3,3,10,0.98)", backdropFilter: "blur(20px)", borderTop: `1px solid ${C.border}`, padding: "8px 12px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
+              {tabs.map(t => <button key={t.id} onClick={() => { setTab(t.id); setMobileMenuOpen(false); }} style={{ padding: "12px 6px", fontSize: 12, fontWeight: 500, cursor: "pointer", background: tab === t.id ? C.accentGlow : "transparent", border: `1px solid ${tab === t.id ? C.borderHi : "transparent"}`, borderRadius: 6, color: tab === t.id ? C.accent : C.muted, fontFamily: "inherit", textAlign: "center", transition: "all 0.15s" }}>{t.label}</button>)}
             </div>
           </div>
         )}
@@ -1263,13 +1652,15 @@ export default function App() {
 
       <style>{`
         @media (max-width: 680px) {
-          #mobile-nav-container { display: block !important; }
+          #mobile-nav-wrap { display: block !important; }
           #desktop-nav { display: none !important; }
           main { padding-left: 14px !important; padding-right: 14px !important; padding-bottom: 80px !important; }
         }
       `}</style>
 
-      {showReport&&<EveningReport onClose={()=>setShowReport(false)} userId={user.id}/>}
+      {showBgPicker && <div style={{ position: "fixed", inset: 0, zIndex: 150 }} onClick={() => setShowBgPicker(false)} />}
+      {showFortune && <FortuneModal onClose={() => setShowFortune(false)} />}
+      {showReport && <EveningReport onClose={() => setShowReport(false)} userId={user.id} />}
     </div>
   );
 }
