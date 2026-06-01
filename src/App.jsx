@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY || "";
-const GEMINI_MODEL = "gemini-1.5-flash";
+const GEMINI_MODEL = "gemini-2.0-flash-exp";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
 const VINCE_EMAIL = "vince@vincehub.com";
 
@@ -966,144 +966,151 @@ const Bible = ({ userId }) => {
 };
 
 // ─── NOTES (inspired by quickwitbunnyblog) ────────────────────────────────────
-const NotesAndJournal = ({ userId }) => {
-  const [subTab, setSubTab] = useState("notes");
-  const [notes, setNotes] = useSynced("obsidian_notes", [], userId);
-  const [activeNote, setActiveNote] = useState(null);
-  const [isPreview, setIsPreview] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [search, setSearch] = useState("");
 
-  // Editor state
-  const [title, setTitle] = useState("");
-  const [blocks, setBlocks] = useState([]); // {id,type:"text"|"image"|"video"|"url"|"divider"|"quote",content,data}
-  const [tags, setTags] = useState("");
-
-  // Typography settings (synced)
-  const [typo, setTypo] = useSynced("note_typo", { font:"Georgia,serif", size:16, lineH:"loose", spacing:"normal", color:"#d8dff0" }, userId);
-
-  // Refs
-  const fileRef = useRef();
-  const insertTargetRef = useRef(null);
-
-  const mkId = () => Date.now() + Math.random();
-  const mkBlock = (type, content="", data="") => ({ id: mkId(), type, content, data });
-
-  const openNote = n => {
-    setActiveNote(n);
-    setTitle(n.title || "");
-    setTags(n.tags || "");
-    setIsPreview(false);
-    if (Array.isArray(n.blocks) && n.blocks.length > 0) setBlocks(n.blocks);
-    else setBlocks([mkBlock("text", n.body || "")]);
-  };
-
-  const saveNote = () => {
-    const bodyText = blocks.filter(b => b.type === "text").map(b => b.content).join("\n\n");
-    const updated = { ...activeNote, title: title || "Untitled", blocks, body: bodyText, tags, updated: new Date().toLocaleDateString() };
-    if (activeNote.id === "new") { const n = { ...updated, id: Date.now(), created: new Date().toLocaleDateString() }; setNotes([n, ...notes]); setActiveNote(n); }
-    else setNotes(notes.map(n => n.id === activeNote.id ? updated : n));
-  };
-
-  const newNote = () => openNote({ id: "new", title: "", blocks: [mkBlock("text", "")], tags: "", created: new Date().toLocaleDateString(), updated: new Date().toLocaleDateString() });
-  const deleteNote = id => { setNotes(notes.filter(n => n.id !== id)); setActiveNote(null); };
-
-  const updateBlock = (id, f, v) => setBlocks(bs => bs.map(b => b.id === id ? { ...b, [f]: v } : b));
-  const removeBlock = id => setBlocks(bs => bs.filter(b => b.id !== id));
-  const addAfter = (afterId, block) => setBlocks(bs => { const i = bs.findIndex(b => b.id === afterId); const n = [...bs]; n.splice(i + 1, 0, block); return n; });
-  const addEnd = block => setBlocks(bs => [...bs, block]);
-
-  const insertMedia = (afterId, type, data, content = "") => {
-    const b = mkBlock(type, content, data);
-    afterId ? addAfter(afterId, b) : addEnd(b);
-  };
-
-  const handleFile = (e, afterId) => {
-    Array.from(e.target.files).forEach(file => {
-      const r = new FileReader();
-      if (file.type.startsWith("image/")) { r.onload = ev => insertMedia(afterId, "image", ev.target.result, file.name); r.readAsDataURL(file); }
-      else if (file.type.startsWith("video/")) { r.onload = ev => insertMedia(afterId, "video", ev.target.result, file.name); r.readAsDataURL(file); }
-    });
-    e.target.value = "";
-  };
-
-  const embedUrl = (url, afterId) => {
-    if (!url.trim()) return;
-    const u = url.trim();
-    const isYT = /youtu(be\.com|\.be)/.test(u);
-    const isVimeo = /vimeo\.com/.test(u);
-    const isImg = /\.(png|jpg|jpeg|gif|webp|svg)(\?|$)/i.test(u);
-    const isSpotify = /open\.spotify\.com/.test(u);
-    const type = isYT || isVimeo ? "video" : isImg ? "image" : isSpotify ? "spotify" : "url";
-    insertMedia(afterId, type, u, u);
-  };
-
+// ─── NOTE MEDIA BLOCK (defined OUTSIDE NotesAndJournal to prevent remounting) ─
+const NoteMediaBlock = ({ block, onRemove }) => {
   const getYTEmbed = url => { const m = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/); return m ? `https://www.youtube.com/embed/${m[1]}` : null; };
   const getVimeoEmbed = url => { const m = url.match(/vimeo\.com\/(\d+)/); return m ? `https://player.vimeo.com/video/${m[1]}` : null; };
   const getSpotifyEmbed = url => { const m = url.match(/spotify\.com\/(track|album|playlist)\/([a-zA-Z0-9]+)/); return m ? `https://open.spotify.com/embed/${m[1]}/${m[2]}` : null; };
 
-  const filteredNotes = notes.filter(n =>
-    n.title?.toLowerCase().includes(search.toLowerCase()) ||
-    n.body?.toLowerCase().includes(search.toLowerCase()) ||
-    n.tags?.toLowerCase().includes(search.toLowerCase())
+  if (block.type === "image") return (
+    <div style={{ position:"relative", margin:"10px 0" }}>
+      <img src={block.data} alt={block.content||""} style={{ maxWidth:"100%", borderRadius:6, border:`1px solid ${C.border}`, display:"block" }} />
+      {block.content && <div style={{ fontSize:11, color:C.dim, marginTop:4, textAlign:"center", fontStyle:"italic" }}>{block.content}</div>}
+      <button onClick={onRemove} style={{ position:"absolute", top:6, right:6, background:"rgba(0,0,0,0.75)", border:"none", color:"#fff", borderRadius:"50%", width:22, height:22, cursor:"pointer", fontSize:13, lineHeight:1 }}>×</button>
+    </div>
   );
+  if (block.type === "video") {
+    const yt = getYTEmbed(block.data), vm = getVimeoEmbed(block.data);
+    return (
+      <div style={{ position:"relative", margin:"10px 0" }}>
+        {(yt||vm) ? <iframe src={yt||vm} style={{ width:"100%", aspectRatio:"16/9", borderRadius:6, border:`1px solid ${C.border}` }} allowFullScreen title="video" />
+          : <video src={block.data} controls style={{ maxWidth:"100%", borderRadius:6, border:`1px solid ${C.border}` }} />}
+        <button onClick={onRemove} style={{ position:"absolute", top:6, right:6, background:"rgba(0,0,0,0.75)", border:"none", color:"#fff", borderRadius:"50%", width:22, height:22, cursor:"pointer", fontSize:13, lineHeight:1 }}>×</button>
+      </div>
+    );
+  }
+  if (block.type === "spotify") {
+    const e = getSpotifyEmbed(block.data);
+    return e ? <div style={{ position:"relative", margin:"10px 0" }}><iframe src={e} style={{ width:"100%", height:80, borderRadius:6, border:"none" }} allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" /><button onClick={onRemove} style={{ position:"absolute", top:4, right:4, background:"rgba(0,0,0,0.75)", border:"none", color:"#fff", borderRadius:"50%", width:18, height:18, cursor:"pointer", fontSize:11 }}>×</button></div> : null;
+  }
+  if (block.type === "url") return (
+    <div style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 14px", background:C.surface2, borderRadius:6, border:`1px solid ${C.border}`, margin:"8px 0", position:"relative" }}>
+      <span style={{ fontSize:14 }}>🔗</span>
+      <a href={block.data} target="_blank" rel="noopener noreferrer" style={{ color:C.accent, fontSize:13, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{block.content||block.data}</a>
+      <button onClick={onRemove} style={{ background:"transparent", border:"none", color:C.dim, cursor:"pointer", fontSize:18 }}>×</button>
+    </div>
+  );
+  if (block.type === "divider") return <hr style={{ border:"none", borderTop:`1px solid ${C.border}`, margin:"16px 0" }} />;
+  return null;
+};
 
-  // Typography map
-  const lineHMap = { tight: 1.4, normal: 1.7, loose: 1.9, airy: 2.3 };
-  const spacingMap = { tight: "-0.02em", normal: "0em", wide: "0.04em", wider: "0.08em" };
+// ─── NOTES + JOURNAL ──────────────────────────────────────────────────────────
+const NotesAndJournal = ({ userId }) => {
+  const [subTab, setSubTab] = useState("notes");
+  const [notes, setNotes] = useSynced("obsidian_notes", [], userId);
+  const [activeId, setActiveId] = useState(null);
+  const [isPreview, setIsPreview] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [showTypo, setShowTypo] = useState(false);
 
-  const fontOptions = [
-    { label: "Mono", value: "'JetBrains Mono',monospace" },
-    { label: "Georgia", value: "Georgia,serif" },
-    { label: "Times", value: "'Times New Roman',serif" },
-    { label: "Trebuchet", value: "'Trebuchet MS',sans-serif" },
-    { label: "Cursive", value: "cursive" },
-  ];
+  // Single flat editor state — no sub-components
+  const [noteTitle, setNoteTitle] = useState("");
+  const [noteBody, setNoteBody] = useState(""); // main markdown text
+  const [noteTags, setNoteTags] = useState("");
+  const [noteMedia, setNoteMedia] = useState([]); // [{id,type,data,content,position}] position = char offset or "end"
+  const [typo, setTypo] = useSynced("note_typo", { font:"Georgia,serif", size:16, lineH:1.85, spacing:0 }, userId);
 
-  const editorStyle = {
-    fontFamily: typo.font,
-    fontSize: typo.size,
-    lineHeight: lineHMap[typo.lineH] || 1.9,
-    letterSpacing: spacingMap[typo.spacing] || "0em",
-    color: typo.color,
+  const fileRef = useRef();
+  const bodyRef = useRef();
+  const [urlInput, setUrlInput] = useState("");
+  const [showEmbed, setShowEmbed] = useState(false);
+
+  const activeNote = notes.find(n => n.id === activeId);
+
+  const openNote = n => {
+    setActiveId(n.id === "new" ? "new" : n.id);
+    setNoteTitle(n.title || "");
+    setNoteBody(n.body || "");
+    setNoteTags(n.tags || "");
+    setNoteMedia(n.media || []);
+    setIsPreview(false);
+    setShowEmbed(false);
   };
 
-  // Journal state
-  const [posts, setPosts] = useSynced("journal_posts", [], userId);
-  const [jView, setJView] = useState("list");
-  const [jActive, setJActive] = useState(null);
-  const [jTitle, setJTitle] = useState(""); const [jBody, setJBody] = useState(""); const [jMood, setJMood] = useState("Neutral"); const [jSearch, setJSearch] = useState("");
-  const moods = ["Neutral","Good","Great","Rough","Motivated","Tired","Reflective"];
-  const saveJournal = () => {
-    if (!jBody.trim()) return;
-    const post = { id: Date.now(), title: jTitle.trim() || new Date().toLocaleDateString("en-US",{month:"long",day:"numeric"}), body: jBody.trim(), mood: jMood, date: new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"}), wordCount: jBody.trim().split(/\s+/).length };
-    setPosts([post, ...posts]); setJTitle(""); setJBody(""); setJMood("Neutral"); setJView("list");
+  const newNote = () => {
+    const n = { id:"new", title:"", body:"", tags:"", media:[], created:new Date().toLocaleDateString(), updated:new Date().toLocaleDateString() };
+    openNote(n);
   };
-  const filteredPosts = posts.filter(p => p.title?.toLowerCase().includes(jSearch.toLowerCase()) || p.body?.toLowerCase().includes(jSearch.toLowerCase()));
 
-  // Inline insert toolbar per block
-  const [insertOpen, setInsertOpen] = useState(null); // block id
-  const [urlDraft, setUrlDraft] = useState("");
+  const saveNote = () => {
+    const updated = { title:noteTitle||"Untitled", body:noteBody, tags:noteTags, media:noteMedia, updated:new Date().toLocaleDateString() };
+    if (activeId === "new") {
+      const n = { ...updated, id:Date.now(), created:new Date().toLocaleDateString() };
+      setNotes(prev => [n, ...prev]);
+      setActiveId(n.id);
+    } else {
+      setNotes(prev => prev.map(n => n.id === activeId ? { ...n, ...updated } : n));
+    }
+  };
 
-  const typoCSS = `
-    .note-text-block { font-family: ${typo.font}; font-size: ${typo.size}px; line-height: ${lineHMap[typo.lineH]||1.9}; letter-spacing: ${spacingMap[typo.spacing]||"0em"}; color: ${typo.color}; background: transparent; border: none; width: 100%; resize: none; outline: none; padding: 0; min-height: 28px; }
-    .note-text-block::placeholder { color: rgba(100,110,150,0.4); }
-    .note-preview-text { font-family: ${typo.font}; font-size: ${typo.size}px; line-height: ${lineHMap[typo.lineH]||1.9}; letter-spacing: ${spacingMap[typo.spacing]||"0em"}; color: ${typo.color}; }
-    .note-preview-text h1 { font-size: 1.8em; font-weight: 700; border-bottom: 1px solid rgba(80,100,180,0.3); padding-bottom: 0.2em; margin: 0.6em 0 0.3em; color: #eef; }
-    .note-preview-text h2 { font-size: 1.4em; font-weight: 600; margin: 0.7em 0 0.2em; color: #dde; }
-    .note-preview-text h3 { font-size: 1.15em; font-weight: 600; margin: 0.5em 0; color: #ccd; }
-    .note-preview-text strong { font-weight: 700; color: #eef; }
-    .note-preview-text em { font-style: italic; }
-    .note-preview-text del { text-decoration: line-through; opacity: 0.6; }
-    .note-preview-text code { font-family: 'JetBrains Mono',monospace; font-size: 0.85em; background: rgba(40,60,120,0.3); border-radius: 3px; padding: 1px 5px; color: #88aaff; }
-    .note-preview-text pre { background: rgba(5,5,20,0.85); border-radius: 6px; padding: 14px; overflow-x: auto; margin: 0.7em 0; }
-    .note-preview-text blockquote { border-left: 3px solid #4a78ff; margin: 0.7em 0; padding: 4px 14px; background: rgba(40,80,200,0.08); color: #8090c0; border-radius: 0 4px 4px 0; }
-    .note-preview-text hr { border: none; border-top: 1px solid rgba(40,80,160,0.3); margin: 1em 0; }
-    .note-preview-text ul { padding-left: 1.5em; } .note-preview-text li { margin: 0.2em 0; }
-    .note-preview-text a { color: #6090ff; }
-    .note-block-row:hover .block-insert-btn { opacity: 1; }
-    .block-insert-btn { opacity: 0; transition: opacity 0.15s; }
-  `;
+  const deleteNote = () => { setNotes(prev => prev.filter(n => n.id !== activeId)); setActiveId(null); };
+
+  const insertMedia = (type, data, content="") => {
+    const id = Date.now() + Math.random();
+    // Insert at cursor position in body as a marker, or append
+    const ta = bodyRef.current;
+    const pos = ta ? ta.selectionStart : noteBody.length;
+    const marker = `\n\n[media:${id}]\n\n`;
+    setNoteBody(prev => prev.slice(0, pos) + marker + prev.slice(pos));
+    setNoteMedia(prev => [...prev, { id, type, data, content }]);
+  };
+
+  const handleFile = e => {
+    Array.from(e.target.files).forEach(file => {
+      const r = new FileReader();
+      if (file.type.startsWith("image/")) { r.onload = ev => insertMedia("image", ev.target.result, file.name); r.readAsDataURL(file); }
+      else if (file.type.startsWith("video/")) { r.onload = ev => insertMedia("video", ev.target.result, file.name); r.readAsDataURL(file); }
+    });
+    e.target.value = "";
+  };
+
+  const embedUrl = () => {
+    if (!urlInput.trim()) return;
+    const u = urlInput.trim();
+    const isYT = /youtu(be\.com|\.be)/.test(u);
+    const isVimeo = /vimeo\.com/.test(u);
+    const isImg = /\.(png|jpg|jpeg|gif|webp|svg)(\?|$)/i.test(u);
+    const isSpotify = /open\.spotify\.com/.test(u);
+    const type = (isYT||isVimeo) ? "video" : isImg ? "image" : isSpotify ? "spotify" : "url";
+    insertMedia(type, u, u);
+    setUrlInput(""); setShowEmbed(false);
+  };
+
+  const removeMedia = id => {
+    setNoteMedia(prev => prev.filter(m => m.id !== id));
+    setNoteBody(prev => prev.replace(new RegExp(`\\n*\\[media:${id}\\]\\n*`, "g"), "\n\n"));
+  };
+
+  // Render body with inline media markers
+  const renderBody = () => {
+    const parts = noteBody.split(/(\[media:[^\]]+\])/);
+    return parts.map((part, i) => {
+      const match = part.match(/^\[media:([^\]]+)\]$/);
+      if (match) {
+        const mediaId = parseFloat(match[1]);
+        const block = noteMedia.find(m => m.id === mediaId);
+        if (block) return <NoteMediaBlock key={i} block={block} onRemove={isPreview ? null : () => removeMedia(mediaId)} />;
+        return null;
+      }
+      if (!part.trim()) return null;
+      if (isPreview) {
+        return <div key={i} className="note-preview-text" dangerouslySetInnerHTML={{ __html: renderMd(part) }} />;
+      }
+      return null;
+    });
+  };
 
   const renderMd = text => {
     if (!text) return "";
@@ -1119,225 +1126,170 @@ const NotesAndJournal = ({ userId }) => {
       .replace(/^-{3,}$/gm,"<hr/>").replace(/^>\s(.+)$/gm,"<blockquote>$1</blockquote>")
       .replace(/^[-*]\s(.+)$/gm,"<li>$1</li>").replace(/(<li>.*<\/li>\n?)+/g,"<ul>$&</ul>")
       .replace(/\[(.+?)\]\((.+?)\)/g,'<a href="$2" target="_blank">$1</a>')
-      .replace(/\n\n/g,"</p><p>").replace(/^(?!<[hupbacl])(.+)$/gm,"<p>$1</p>");
+      .replace(/\n\n/g,"</p><p>").replace(/^(?!<[hupbacl])(.+?)$/gm,"<p>$1</p>");
   };
 
-  const BlockInlineEditor = ({ block }) => {
-    const taRef = useRef();
-    const autoH = el => { if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; } };
-    useEffect(() => { autoH(taRef.current); }, [block.content]);
-
-    return (
-      <div className="note-block-row" style={{ position: "relative", marginBottom: 6 }}>
-        {block.type === "text" && (
-          <div style={{ display: "flex", gap: 6 }}>
-            <textarea ref={taRef} className="note-text-block" value={block.content} rows={1}
-              onChange={e => { updateBlock(block.id, "content", e.target.value); autoH(e.target); }}
-              onKeyDown={e => {
-                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addAfter(block.id, mkBlock("text", "")); }
-                if (e.key === "Backspace" && block.content === "") { e.preventDefault(); removeBlock(block.id); }
-              }}
-              placeholder="Write here... (use markdown: # heading, **bold**, *italic*, > quote, ---)"
-            />
-            <button className="block-insert-btn" onClick={() => { setInsertOpen(insertOpen === block.id ? null : block.id); setUrlDraft(""); }}
-              style={{ background: insertOpen === block.id ? C.accentGlow : "rgba(20,30,80,0.6)", border: `1px solid ${insertOpen === block.id ? C.borderHi : C.border}`, color: insertOpen === block.id ? C.accent : C.muted, borderRadius: 4, fontSize: 14, padding: "2px 8px", cursor: "pointer", flexShrink: 0, height: 28 }} title="Insert media">+</button>
-          </div>
-        )}
-        {block.type === "divider" && (
-          <div style={{ position: "relative", margin: "12px 0" }}>
-            <hr style={{ border: "none", borderTop: `1px solid ${C.border}`, margin: 0 }} />
-            <button onClick={() => removeBlock(block.id)} style={{ position: "absolute", right: 0, top: -10, background: "rgba(0,0,0,0.7)", border: "none", color: C.dim, borderRadius: "50%", width: 18, height: 18, cursor: "pointer", fontSize: 11 }}>×</button>
-          </div>
-        )}
-        {block.type === "quote" && (
-          <div style={{ position: "relative" }}>
-            <div style={{ borderLeft: `3px solid ${C.accent}`, paddingLeft: 12, margin: "8px 0" }}>
-              <textarea className="note-text-block" value={block.content} rows={2} onChange={e => updateBlock(block.id, "content", e.target.value)} placeholder="Quote text..." style={{ fontStyle: "italic", color: "#8090c0" }} />
-            </div>
-            <button onClick={() => removeBlock(block.id)} style={{ position: "absolute", right: 0, top: 0, background: "transparent", border: "none", color: C.dim, cursor: "pointer", fontSize: 16 }}>×</button>
-          </div>
-        )}
-        {block.type === "image" && (
-          <div style={{ position: "relative", marginBottom: 8 }}>
-            <img src={block.data} alt={block.content || ""} style={{ maxWidth: "100%", borderRadius: 6, display: "block", border: `1px solid ${C.border}` }} />
-            {block.content && <div style={{ fontSize: 11, color: C.dim, marginTop: 4, fontStyle: "italic", textAlign: "center" }}>{block.content}</div>}
-            <button onClick={() => removeBlock(block.id)} style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.75)", border: "none", color: "#fff", borderRadius: "50%", width: 22, height: 22, cursor: "pointer", fontSize: 12 }}>×</button>
-          </div>
-        )}
-        {block.type === "video" && (() => {
-          const yt = getYTEmbed(block.data); const vm = getVimeoEmbed(block.data);
-          return (
-            <div style={{ position: "relative", marginBottom: 8 }}>
-              {(yt || vm) ? <iframe src={yt || vm} style={{ width: "100%", aspectRatio: "16/9", borderRadius: 6, border: `1px solid ${C.border}` }} allowFullScreen title="video" /> : <video src={block.data} controls style={{ maxWidth: "100%", borderRadius: 6 }} />}
-              <button onClick={() => removeBlock(block.id)} style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.75)", border: "none", color: "#fff", borderRadius: "50%", width: 22, height: 22, cursor: "pointer", fontSize: 12 }}>×</button>
-            </div>
-          );
-        })()}
-        {block.type === "spotify" && (() => {
-          const embed = getSpotifyEmbed(block.data);
-          return embed ? (
-            <div style={{ position: "relative", marginBottom: 8 }}>
-              <iframe src={embed} style={{ width: "100%", height: 80, borderRadius: 6, border: "none" }} allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" />
-              <button onClick={() => removeBlock(block.id)} style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,0.75)", border: "none", color: "#fff", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", fontSize: 11 }}>×</button>
-            </div>
-          ) : <div style={{ color: "#f08080", fontSize: 12 }}>Invalid Spotify URL</div>;
-        })()}
-        {block.type === "url" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", background: C.surface2, borderRadius: 6, border: `1px solid ${C.border}`, marginBottom: 8, position: "relative" }}>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M5 7a3 3 0 004.24 4.24l1.42-1.42A3 3 0 006.76 5.34L5.34 6.76" stroke={C.accent} strokeWidth="1.5" strokeLinecap="round"/></svg>
-            <a href={block.data} target="_blank" rel="noopener noreferrer" style={{ color: C.accent, fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{block.content || block.data}</a>
-            <button onClick={() => removeBlock(block.id)} style={{ background: "transparent", border: "none", color: C.dim, cursor: "pointer", fontSize: 16, flexShrink: 0 }}>×</button>
-          </div>
-        )}
-
-        {/* Insert toolbar */}
-        {insertOpen === block.id && (
-          <div style={{ background: "#0a0a20", border: `1px solid ${C.borderHi}`, borderRadius: 8, padding: "12px 14px", marginTop: 4, marginBottom: 8 }}>
-            <div style={{ fontSize: 10, color: C.dim, letterSpacing: "0.1em", marginBottom: 10 }}>INSERT BELOW</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-              {[
-                { label: "Image / Video", action: () => { insertTargetRef.current = block.id; fileRef.current.click(); setInsertOpen(null); } },
-                { label: "Divider —", action: () => { addAfter(block.id, mkBlock("divider")); setInsertOpen(null); } },
-                { label: "Quote", action: () => { addAfter(block.id, mkBlock("quote")); setInsertOpen(null); } },
-                { label: "Text Block", action: () => { addAfter(block.id, mkBlock("text")); setInsertOpen(null); } },
-              ].map(btn => (
-                <button key={btn.label} onClick={btn.action} style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.muted, padding: "4px 12px", borderRadius: 4, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>{btn.label}</button>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <input value={urlDraft} onChange={e => setUrlDraft(e.target.value)} placeholder="Paste YouTube, Spotify, image URL, or any link..." onKeyDown={e => e.key === "Enter" && (embedUrl(urlDraft, block.id), setInsertOpen(null), setUrlDraft(""))} style={{ flex: 1, background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 4, color: C.text, padding: "6px 10px", fontSize: 12, outline: "none", fontFamily: "inherit" }} />
-              <button onClick={() => { embedUrl(urlDraft, block.id); setInsertOpen(null); setUrlDraft(""); }} style={{ background: C.accentGlow, border: `1px solid ${C.borderHi}`, color: C.accent, padding: "6px 14px", borderRadius: 4, fontSize: 11, cursor: "pointer" }}>Embed</button>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const BlockPreview = ({ block }) => {
-    if (block.type === "text") return <div className="note-preview-text" dangerouslySetInnerHTML={{ __html: renderMd(block.content) }} style={{ marginBottom: 8 }} />;
-    if (block.type === "divider") return <hr style={{ border: "none", borderTop: `1px solid ${C.border}`, margin: "16px 0" }} />;
-    if (block.type === "quote") return <blockquote style={{ borderLeft: `3px solid ${C.accent}`, paddingLeft: 14, margin: "10px 0", color: "#8090c0", fontStyle: "italic", ...editorStyle }}>{block.content}</blockquote>;
-    if (block.type === "image") return <div style={{ marginBottom: 14 }}><img src={block.data} alt={block.content || ""} style={{ maxWidth: "100%", borderRadius: 6, border: `1px solid ${C.border}` }} />{block.content && <div style={{ fontSize: 12, color: C.dim, marginTop: 6, textAlign: "center", fontStyle: "italic" }}>{block.content}</div>}</div>;
-    if (block.type === "video") { const yt = getYTEmbed(block.data), vm = getVimeoEmbed(block.data); return <div style={{ marginBottom: 14 }}>{(yt || vm) ? <iframe src={yt || vm} style={{ width: "100%", aspectRatio: "16/9", borderRadius: 6, border: `1px solid ${C.border}` }} allowFullScreen title="v" /> : <video src={block.data} controls style={{ maxWidth: "100%", borderRadius: 6 }} />}</div>; }
-    if (block.type === "spotify") { const e = getSpotifyEmbed(block.data); return e ? <iframe src={e} style={{ width: "100%", height: 80, borderRadius: 6, border: "none", marginBottom: 14 }} allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" /> : null; }
-    if (block.type === "url") return <div style={{ margin: "8px 0 14px", padding: "10px 14px", background: C.surface2, borderRadius: 6, border: `1px solid ${C.border}` }}><a href={block.data} target="_blank" rel="noopener noreferrer" style={{ color: C.accent, fontSize: 13 }}>🔗 {block.content || block.data}</a></div>;
-    return null;
-  };
-
-  const TypoPanel = () => (
-    <div style={{ position: "absolute", top: "100%", right: 0, zIndex: 60, background: "#08081c", border: `1px solid ${C.borderHi}`, borderRadius: 10, padding: 16, width: 220, boxShadow: "0 12px 40px rgba(0,0,0,0.7)" }} onClick={e => e.stopPropagation()}>
-      <div style={{ fontSize: 10, color: C.dim, letterSpacing: "0.12em", marginBottom: 10 }}>FONT</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: 12 }}>
-        {fontOptions.map(f => <button key={f.value} onClick={() => setTypo(p => ({ ...p, font: f.value }))} style={{ textAlign: "left", padding: "4px 8px", borderRadius: 3, border: `1px solid ${typo.font === f.value ? C.borderHi : "transparent"}`, background: typo.font === f.value ? C.accentGlow : "transparent", color: typo.font === f.value ? C.accent : C.muted, fontSize: 12, cursor: "pointer", fontFamily: f.value }}>{f.label}</button>)}
-      </div>
-      <div style={{ fontSize: 10, color: C.dim, letterSpacing: "0.12em", marginBottom: 6 }}>SIZE: {typo.size}px</div>
-      <input type="range" min={12} max={24} value={typo.size} onChange={e => setTypo(p => ({ ...p, size: +e.target.value }))} style={{ width: "100%", accentColor: C.accent, marginBottom: 10 }} />
-      <div style={{ fontSize: 10, color: C.dim, letterSpacing: "0.12em", marginBottom: 6 }}>LINE HEIGHT</div>
-      <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
-        {["tight","normal","loose","airy"].map(v => <button key={v} onClick={() => setTypo(p => ({ ...p, lineH: v }))} style={{ flex: 1, padding: "3px 0", borderRadius: 3, border: `1px solid ${typo.lineH === v ? C.borderHi : C.border}`, background: typo.lineH === v ? C.accentGlow : "transparent", color: typo.lineH === v ? C.accent : C.dim, fontSize: 9, cursor: "pointer", textTransform: "capitalize" }}>{v}</button>)}
-      </div>
-      <div style={{ fontSize: 10, color: C.dim, letterSpacing: "0.12em", marginBottom: 6 }}>SPACING</div>
-      <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
-        {["tight","normal","wide","wider"].map(v => <button key={v} onClick={() => setTypo(p => ({ ...p, spacing: v }))} style={{ flex: 1, padding: "3px 0", borderRadius: 3, border: `1px solid ${typo.spacing === v ? C.borderHi : C.border}`, background: typo.spacing === v ? C.accentGlow : "transparent", color: typo.spacing === v ? C.accent : C.dim, fontSize: 9, cursor: "pointer", textTransform: "capitalize" }}>{v}</button>)}
-      </div>
-      <div style={{ fontSize: 10, color: C.dim, letterSpacing: "0.12em", marginBottom: 6 }}>TEXT COLOR</div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {["#d8dff0","#e8eaf6","#c0c8e0","#a0b0c8","#ffffff","#f0e8d0"].map(col => <button key={col} onClick={() => setTypo(p => ({ ...p, color: col }))} style={{ width: 24, height: 24, borderRadius: "50%", background: col, border: `2px solid ${typo.color === col ? "#fff" : "transparent"}`, cursor: "pointer" }} />)}
-      </div>
-    </div>
+  const filteredNotes = notes.filter(n =>
+    !search || n.title?.toLowerCase().includes(search.toLowerCase()) || n.body?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const [showTypo, setShowTypo] = useState(false);
+  // Typography
+  const typoCSS = `
+    .note-textarea { font-family:${typo.font}; font-size:${typo.size}px; line-height:${typo.lineH}; letter-spacing:${typo.spacing}em; color:#c8d0e8; background:transparent; border:none; width:100%; outline:none; resize:none; padding:0; min-height:400px; }
+    .note-textarea::placeholder { color:rgba(80,90,130,0.5); }
+    .note-preview-text { font-family:${typo.font}; font-size:${typo.size}px; line-height:${typo.lineH}; letter-spacing:${typo.spacing}em; color:#c8d0e8; }
+    .note-preview-text h1 { font-size:1.8em; font-weight:700; border-bottom:1px solid rgba(60,90,180,0.3); padding-bottom:.2em; margin:.5em 0 .3em; color:#eef; }
+    .note-preview-text h2 { font-size:1.4em; font-weight:600; margin:.6em 0 .2em; color:#dde; }
+    .note-preview-text h3 { font-size:1.15em; font-weight:600; margin:.5em 0; color:#ccd; }
+    .note-preview-text p { margin:.4em 0; }
+    .note-preview-text strong { font-weight:700; color:#eef; }
+    .note-preview-text em { font-style:italic; }
+    .note-preview-text code { font-family:'JetBrains Mono',monospace; font-size:.85em; background:rgba(40,60,120,.3); border-radius:3px; padding:1px 5px; color:#88aaff; }
+    .note-preview-text pre { background:rgba(5,5,20,.85); border-radius:6px; padding:14px; overflow-x:auto; margin:.7em 0; }
+    .note-preview-text blockquote { border-left:3px solid #4a78ff; margin:.6em 0; padding:4px 14px; background:rgba(40,80,200,.08); color:#8090c0; border-radius:0 4px 4px 0; }
+    .note-preview-text hr { border:none; border-top:1px solid rgba(40,80,160,.3); margin:1em 0; }
+    .note-preview-text ul { padding-left:1.5em; } .note-preview-text li { margin:.2em 0; }
+    .note-preview-text a { color:#6090ff; }
+    .note-preview-text del { text-decoration:line-through; opacity:.6; }
+  `;
+
+  const fontOptions = [
+    { label:"Georgia (Serif)", value:"Georgia,serif" },
+    { label:"Mono", value:"'JetBrains Mono',monospace" },
+    { label:"System Sans", value:"system-ui,sans-serif" },
+    { label:"Times", value:"'Times New Roman',serif" },
+  ];
+
+  // Journal
+  const [posts, setPosts] = useSynced("journal_posts", [], userId);
+  const [jView, setJView] = useState("list");
+  const [jActive, setJActive] = useState(null);
+  const [jTitle, setJTitle] = useState(""); const [jBody, setJBody] = useState(""); const [jMood, setJMood] = useState("Neutral"); const [jSearch, setJSearch] = useState("");
+  const moods = ["Neutral","Good","Great","Rough","Motivated","Tired","Reflective"];
+  const saveJournal = () => {
+    if (!jBody.trim()) return;
+    const post = { id:Date.now(), title:jTitle.trim()||new Date().toLocaleDateString("en-US",{month:"long",day:"numeric"}), body:jBody.trim(), mood:jMood, date:new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"}), wordCount:jBody.trim().split(/\s+/).length };
+    setPosts([post,...posts]); setJTitle(""); setJBody(""); setJMood("Neutral"); setJView("list");
+  };
+  const filteredPosts = posts.filter(p => !jSearch || p.title?.toLowerCase().includes(jSearch.toLowerCase()) || p.body?.toLowerCase().includes(jSearch.toLowerCase()));
 
   return (
-    <div className="fade-up" style={isFullscreen ? { position: "fixed", inset: 0, zIndex: 200, background: C.bg, display: "flex", flexDirection: "column" } : {}}>
+    <div className="fade-up" style={isFullscreen ? { position:"fixed", inset:0, zIndex:200, background:C.bg, display:"flex", flexDirection:"column" } : {}}>
       <style>{typoCSS}</style>
-      <input ref={fileRef} type="file" multiple accept="image/*,video/*" style={{ display: "none" }} onChange={e => { handleFile(e, insertTargetRef.current); insertTargetRef.current = null; }} />
+      <input ref={fileRef} type="file" multiple accept="image/*,video/*" style={{ display:"none" }} onChange={handleFile} />
 
       {!isFullscreen && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 16, borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
-          {["notes","journal"].map(t => <button key={t} onClick={() => setSubTab(t)} style={{ padding: "5px 16px", borderRadius: 4, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 500, background: subTab === t ? C.accentGlow : "transparent", color: subTab === t ? C.accent : C.muted, borderBottom: `2px solid ${subTab === t ? C.accent : "transparent"}`, textTransform: "capitalize" }}>{t}</button>)}
+        <div style={{ display:"flex", gap:8, marginBottom:16, borderBottom:`1px solid ${C.border}`, paddingBottom:12 }}>
+          {["notes","journal"].map(t => <button key={t} onClick={()=>setSubTab(t)} style={{ padding:"5px 16px", borderRadius:4, border:"none", cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:500, background:subTab===t?C.accentGlow:"transparent", color:subTab===t?C.accent:C.muted, borderBottom:`2px solid ${subTab===t?C.accent:"transparent"}`, textTransform:"capitalize" }}>{t}</button>)}
         </div>
       )}
 
       {subTab === "notes" && (
-        <div style={{ display: "flex", height: isFullscreen ? "100vh" : "calc(100vh - 200px)", minHeight: 520, border: `1px solid ${C.border}`, borderRadius: isFullscreen ? 0 : 8, overflow: "hidden" }}>
+        <div style={{ display:"flex", height:isFullscreen?"100vh":"calc(100vh - 200px)", minHeight:520, border:`1px solid ${C.border}`, borderRadius:isFullscreen?0:8, overflow:"hidden" }}>
 
           {/* Sidebar */}
           {!isFullscreen && (
-            <div style={{ width: 220, flexShrink: 0, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", background: "#05050e" }}>
-              <div style={{ padding: "10px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", color: C.muted, fontFamily: "'JetBrains Mono',monospace" }}>NOTES</span>
-                <button onClick={newNote} style={{ background: "transparent", border: "none", color: C.muted, cursor: "pointer", fontSize: 22, lineHeight: 1, padding: "0 2px" }}>+</button>
+            <div style={{ width:220, flexShrink:0, borderRight:`1px solid ${C.border}`, display:"flex", flexDirection:"column", background:"#05050e" }}>
+              <div style={{ padding:"10px 12px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <span style={{ fontSize:10, fontWeight:700, letterSpacing:"0.12em", color:C.muted, fontFamily:"'JetBrains Mono',monospace" }}>NOTES</span>
+                <button onClick={newNote} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:22, lineHeight:1, padding:"0 2px" }}>+</button>
               </div>
-              <div style={{ padding: "7px 10px", borderBottom: `1px solid ${C.border}` }}>
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`, borderRadius: 4, color: C.text, padding: "5px 8px", fontSize: 11, outline: "none", fontFamily: "inherit" }} />
+              <div style={{ padding:"7px 10px", borderBottom:`1px solid ${C.border}` }}>
+                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." style={{ width:"100%", background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:4, color:C.text, padding:"5px 8px", fontSize:11, outline:"none", fontFamily:"inherit" }} />
               </div>
-              <div style={{ flex: 1, overflowY: "auto" }}>
-                {filteredNotes.length === 0 && <div style={{ padding: "24px 12px", color: C.dim, fontSize: 11, textAlign: "center" }}>No notes.<br /><span style={{ color: C.accent, cursor: "pointer" }} onClick={newNote}>Create one +</span></div>}
+              <div style={{ flex:1, overflowY:"auto" }}>
+                {filteredNotes.length===0 && <div style={{ padding:"24px 12px", color:C.dim, fontSize:11, textAlign:"center" }}>No notes.<br/><span style={{ color:C.accent, cursor:"pointer" }} onClick={newNote}>Create one +</span></div>}
                 {filteredNotes.map(n => (
-                  <div key={n.id} onClick={() => openNote(n)} style={{ padding: "10px 14px", cursor: "pointer", borderBottom: `1px solid rgba(30,60,120,0.1)`, background: activeNote?.id === n.id ? "rgba(74,120,255,0.08)" : "transparent", borderLeft: `2px solid ${activeNote?.id === n.id ? C.accent : "transparent"}`, transition: "all .1s" }}>
-                    <div style={{ fontSize: 12, fontWeight: 500, color: activeNote?.id === n.id ? C.accent : C.text, marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.title || "Untitled"}</div>
-                    <div style={{ fontSize: 10, color: C.dim }}>{n.updated}</div>
-                    {n.tags && <div style={{ fontSize: 9, color: C.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.tags}</div>}
+                  <div key={n.id} onClick={()=>openNote(n)} style={{ padding:"10px 14px", cursor:"pointer", borderBottom:`1px solid rgba(30,60,120,0.1)`, background:activeId===n.id?"rgba(74,120,255,0.08)":"transparent", borderLeft:`2px solid ${activeId===n.id?C.accent:"transparent"}`, transition:"all .1s" }}>
+                    <div style={{ fontSize:12, fontWeight:500, color:activeId===n.id?C.accent:C.text, marginBottom:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{n.title||"Untitled"}</div>
+                    <div style={{ fontSize:10, color:C.dim }}>{n.updated}</div>
+                    {n.tags&&<div style={{ fontSize:9, color:C.muted, marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{n.tags}</div>}
                   </div>
                 ))}
               </div>
-              <div style={{ padding: "8px 12px", borderTop: `1px solid ${C.border}`, fontSize: 10, color: C.dim }}>{notes.length} {notes.length === 1 ? "note" : "notes"}</div>
+              <div style={{ padding:"8px 12px", borderTop:`1px solid ${C.border}`, fontSize:10, color:C.dim }}>{notes.length} {notes.length===1?"note":"notes"}</div>
             </div>
           )}
 
           {/* Editor */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: C.surface }}>
-            {activeNote ? (
+          <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", background:C.surface }}>
+            {activeId ? (
               <>
                 {/* Toolbar */}
-                <div style={{ padding: "8px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 6, flexShrink: 0, background: "#07071a", flexWrap: "wrap" }}>
-                  {isFullscreen && <button onClick={() => setIsFullscreen(false)} style={{ background: "transparent", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, fontFamily: "inherit", marginRight: 6 }}>← Back</button>}
-                  <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Untitled" style={{ background: "transparent", border: "none", color: C.text, fontSize: 15, fontWeight: 700, outline: "none", flex: 1, minWidth: 80, fontFamily: "inherit" }} />
-                  <div style={{ display: "flex", gap: 5, alignItems: "center", position: "relative" }}>
-                    <button onClick={() => setIsPreview(p => !p)} style={{ background: isPreview ? C.accentGlow : "transparent", border: `1px solid ${isPreview ? C.borderHi : C.border}`, color: isPreview ? C.accent : C.muted, padding: "4px 10px", borderRadius: 3, fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>{isPreview ? "Edit" : "Read"}</button>
-                    <button onClick={() => { setShowTypo(p => !p); }} style={{ background: showTypo ? C.accentGlow : "transparent", border: `1px solid ${showTypo ? C.borderHi : C.border}`, color: showTypo ? C.accent : C.muted, padding: "4px 10px", borderRadius: 3, fontSize: 10, cursor: "pointer" }}>Aa</button>
-                    <button onClick={() => setIsFullscreen(p => !p)} style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.muted, padding: "4px 8px", borderRadius: 3, fontSize: 11, cursor: "pointer" }}>{isFullscreen ? "⊡" : "⛶"}</button>
+                <div style={{ padding:"8px 14px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:6, flexShrink:0, background:"#07071a", flexWrap:"wrap" }}>
+                  {isFullscreen && <button onClick={()=>setIsFullscreen(false)} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:12, fontFamily:"inherit", marginRight:4 }}>← Back</button>}
+                  <input value={noteTitle} onChange={e=>setNoteTitle(e.target.value)} placeholder="Untitled" style={{ background:"transparent", border:"none", color:C.text, fontSize:15, fontWeight:700, outline:"none", flex:1, minWidth:80, fontFamily:"inherit" }} />
+                  <div style={{ display:"flex", gap:5, alignItems:"center", position:"relative", flexShrink:0 }}>
+                    <button onClick={()=>setIsPreview(p=>!p)} style={{ background:isPreview?C.accentGlow:"transparent", border:`1px solid ${isPreview?C.borderHi:C.border}`, color:isPreview?C.accent:C.muted, padding:"4px 10px", borderRadius:3, fontSize:10, cursor:"pointer", fontFamily:"inherit" }}>{isPreview?"Edit":"Read"}</button>
+                    <button onClick={()=>setShowTypo(p=>!p)} style={{ background:showTypo?C.accentGlow:"transparent", border:`1px solid ${showTypo?C.borderHi:C.border}`, color:showTypo?C.accent:C.muted, padding:"4px 9px", borderRadius:3, fontSize:10, cursor:"pointer" }}>Aa</button>
+                    <button onClick={()=>setIsFullscreen(p=>!p)} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.muted, padding:"4px 8px", borderRadius:3, fontSize:11, cursor:"pointer" }}>{isFullscreen?"⊡":"⛶"}</button>
                     <Btn size="sm" variant="primary" onClick={saveNote}>Save</Btn>
-                    {activeNote.id !== "new" && <Btn size="sm" variant="danger" onClick={() => deleteNote(activeNote.id)}>Del</Btn>}
-                    {!isFullscreen && <button onClick={() => setActiveNote(null)} style={{ background: "transparent", border: "none", color: C.muted, cursor: "pointer", fontSize: 20, padding: "0 2px" }}>×</button>}
-                    {showTypo && <TypoPanel />}
+                    {activeId!=="new"&&<Btn size="sm" variant="danger" onClick={deleteNote}>Del</Btn>}
+                    {!isFullscreen&&<button onClick={()=>setActiveId(null)} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:20, padding:"0 2px" }}>×</button>}
+
+                    {/* Typography panel */}
+                    {showTypo && (
+                      <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, zIndex:60, background:"#08081c", border:`1px solid ${C.borderHi}`, borderRadius:10, padding:16, width:220, boxShadow:"0 12px 40px rgba(0,0,0,0.7)" }} onClick={e=>e.stopPropagation()}>
+                        <div style={{ fontSize:10, color:C.dim, letterSpacing:"0.1em", marginBottom:8 }}>FONT FAMILY</div>
+                        {fontOptions.map(f=><button key={f.value} onClick={()=>setTypo(p=>({...p,font:f.value}))} style={{ display:"block", width:"100%", textAlign:"left", padding:"4px 8px", borderRadius:3, border:`1px solid ${typo.font===f.value?C.borderHi:"transparent"}`, background:typo.font===f.value?C.accentGlow:"transparent", color:typo.font===f.value?C.accent:C.muted, fontSize:12, cursor:"pointer", fontFamily:f.value, marginBottom:2 }}>{f.label}</button>)}
+                        <div style={{ fontSize:10, color:C.dim, letterSpacing:"0.1em", margin:"10px 0 6px" }}>SIZE: {typo.size}px</div>
+                        <input type="range" min={12} max={24} value={typo.size} onChange={e=>setTypo(p=>({...p,size:+e.target.value}))} style={{ width:"100%", accentColor:C.accent, marginBottom:8 }} />
+                        <div style={{ fontSize:10, color:C.dim, letterSpacing:"0.1em", marginBottom:6 }}>LINE HEIGHT: {typo.lineH}</div>
+                        <input type="range" min={1.2} max={2.8} step={0.05} value={typo.lineH} onChange={e=>setTypo(p=>({...p,lineH:+e.target.value}))} style={{ width:"100%", accentColor:C.accent, marginBottom:8 }} />
+                        <div style={{ fontSize:10, color:C.dim, letterSpacing:"0.1em", marginBottom:6 }}>LETTER SPACING: {typo.spacing}em</div>
+                        <input type="range" min={-0.05} max={0.15} step={0.01} value={typo.spacing} onChange={e=>setTypo(p=>({...p,spacing:+e.target.value}))} style={{ width:"100%", accentColor:C.accent }} />
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {/* Tags */}
-                <div style={{ padding: "5px 16px", borderBottom: `1px solid ${C.border}`, background: "#07071a", flexShrink: 0 }}>
-                  <input value={tags} onChange={e => setTags(e.target.value)} placeholder="tags: #work #ideas..." style={{ width: "100%", background: "transparent", border: "none", color: C.muted, fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono',monospace" }} />
+                <div style={{ padding:"5px 16px", borderBottom:`1px solid ${C.border}`, background:"#07071a", flexShrink:0 }}>
+                  <input value={noteTags} onChange={e=>setNoteTags(e.target.value)} placeholder="tags: #work #ideas #health..." style={{ width:"100%", background:"transparent", border:"none", color:C.muted, fontSize:11, outline:"none", fontFamily:"'JetBrains Mono',monospace" }} />
                 </div>
 
-                {/* Content */}
-                <div style={{ flex: 1, overflow: "auto", padding: "24px 32px" }} onClick={() => setShowTypo(false)}>
-                  {isPreview ? (
-                    <div style={{ maxWidth: 720, margin: "0 auto" }}>
-                      <h1 style={{ ...editorStyle, fontSize: Math.max(typo.size * 1.6, 24), fontWeight: 700, marginBottom: 24, color: "#eef" }}>{title || "Untitled"}</h1>
-                      {blocks.map(b => <BlockPreview key={b.id} block={b} />)}
-                    </div>
-                  ) : (
-                    <div style={{ maxWidth: 720, margin: "0 auto" }}>
-                      {blocks.map(b => <BlockInlineEditor key={b.id} block={b} />)}
-                      {/* Add at end */}
-                      <div style={{ display: "flex", gap: 6, marginTop: 16, paddingTop: 12, borderTop: `1px dashed rgba(30,60,120,0.2)` }}>
-                        <button onClick={() => addEnd(mkBlock("text", ""))} style={{ background: "transparent", border: `1px dashed ${C.border}`, color: C.dim, padding: "5px 14px", borderRadius: 4, fontSize: 11, cursor: "pointer" }}>+ Text</button>
-                        <button onClick={() => addEnd(mkBlock("divider"))} style={{ background: "transparent", border: `1px dashed ${C.border}`, color: C.dim, padding: "5px 14px", borderRadius: 4, fontSize: 11, cursor: "pointer" }}>— Divider</button>
-                        <button onClick={() => addEnd(mkBlock("quote"))} style={{ background: "transparent", border: `1px dashed ${C.border}`, color: C.dim, padding: "5px 14px", borderRadius: 4, fontSize: 11, cursor: "pointer" }}>" Quote</button>
-                        <button onClick={() => { insertTargetRef.current = null; fileRef.current.click(); }} style={{ background: "transparent", border: `1px dashed ${C.border}`, color: C.dim, padding: "5px 14px", borderRadius: 4, fontSize: 11, cursor: "pointer" }}>📎 Media</button>
-                      </div>
-                    </div>
-                  )}
+                {/* Attach toolbar */}
+                {!isPreview && (
+                  <div style={{ padding:"6px 16px", borderBottom:`1px solid ${C.border}`, background:"#080818", flexShrink:0, display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                    <button onClick={()=>fileRef.current.click()} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.muted, padding:"3px 10px", borderRadius:3, fontSize:10, cursor:"pointer", fontFamily:"inherit" }}>📎 Image / Video</button>
+                    <button onClick={()=>setShowEmbed(p=>!p)} style={{ background:showEmbed?C.accentGlow:"transparent", border:`1px solid ${showEmbed?C.borderHi:C.border}`, color:showEmbed?C.accent:C.muted, padding:"3px 10px", borderRadius:3, fontSize:10, cursor:"pointer", fontFamily:"inherit" }}>🔗 Embed URL</button>
+                    {showEmbed && (
+                      <>
+                        <input value={urlInput} onChange={e=>setUrlInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&embedUrl()} placeholder="YouTube, Spotify, image URL, or any link..." style={{ flex:1, minWidth:160, background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`, borderRadius:3, color:C.text, padding:"3px 8px", fontSize:11, outline:"none", fontFamily:"inherit" }} />
+                        <button onClick={embedUrl} style={{ background:C.accentGlow, border:`1px solid ${C.borderHi}`, color:C.accent, padding:"3px 12px", borderRadius:3, fontSize:11, cursor:"pointer" }}>Insert</button>
+                      </>
+                    )}
+                    <div style={{ fontSize:10, color:C.dim, marginLeft:"auto" }}>Tip: media inserts at your cursor position</div>
+                  </div>
+                )}
+
+                {/* Content area */}
+                <div style={{ flex:1, overflow:"auto", padding:"24px 32px" }} onClick={()=>setShowTypo(false)}>
+                  <div style={{ maxWidth:720, margin:"0 auto" }}>
+                    {isPreview ? (
+                      <>
+                        <h1 style={{ fontFamily:typo.font, fontSize:Math.max(typo.size*1.6,24), fontWeight:700, marginBottom:20, color:"#eef" }}>{noteTitle||"Untitled"}</h1>
+                        {renderBody()}
+                      </>
+                    ) : (
+                      <textarea
+                        ref={bodyRef}
+                        className="note-textarea"
+                        value={noteBody}
+                        onChange={e => setNoteBody(e.target.value)}
+                        placeholder={"Start writing...\n\nUse markdown:\n# Heading 1\n## Heading 2\n**bold**  *italic*  `code`\n- list item\n> blockquote\n---\n\nUse the toolbar above to insert images, videos, and URLs at your cursor."}
+                        style={{ fontFamily:typo.font, fontSize:typo.size, lineHeight:typo.lineH, letterSpacing:`${typo.spacing}em` }}
+                        spellCheck={true}
+                      />
+                    )}
+                  </div>
                 </div>
               </>
             ) : (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
-                <svg width="52" height="52" viewBox="0 0 52 52" fill="none"><rect x="10" y="8" width="32" height="36" rx="3" stroke={C.dim} strokeWidth="1.5" /><line x1="17" y1="18" x2="35" y2="18" stroke={C.dim} strokeWidth="1.5" /><line x1="17" y1="25" x2="35" y2="25" stroke={C.dim} strokeWidth="1.5" /><line x1="17" y1="32" x2="26" y2="32" stroke={C.dim} strokeWidth="1.5" /></svg>
-                <div style={{ color: C.dim, fontSize: 13 }}>Select a note or create a new one</div>
-                <button onClick={newNote} style={{ background: C.accentGlow, border: `1px solid ${C.borderHi}`, color: C.accent, padding: "8px 22px", borderRadius: 5, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>New Note</button>
+              <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16 }}>
+                <svg width="52" height="52" viewBox="0 0 52 52" fill="none"><rect x="10" y="8" width="32" height="36" rx="3" stroke={C.dim} strokeWidth="1.5"/><line x1="17" y1="18" x2="35" y2="18" stroke={C.dim} strokeWidth="1.5"/><line x1="17" y1="25" x2="35" y2="25" stroke={C.dim} strokeWidth="1.5"/><line x1="17" y1="32" x2="26" y2="32" stroke={C.dim} strokeWidth="1.5"/></svg>
+                <div style={{ color:C.dim, fontSize:13 }}>Select a note or create a new one</div>
+                <button onClick={newNote} style={{ background:C.accentGlow, border:`1px solid ${C.borderHi}`, color:C.accent, padding:"8px 22px", borderRadius:5, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>New Note</button>
               </div>
             )}
           </div>
@@ -1347,40 +1299,40 @@ const NotesAndJournal = ({ userId }) => {
       {/* JOURNAL */}
       {subTab === "journal" && (
         <>
-          {jView === "list" && (
-            <div style={{ maxWidth: 680, margin: "0 auto" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                <div><div style={{ fontSize: 20, fontWeight: 700 }}>Journal</div><div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{posts.length} {posts.length === 1 ? "entry" : "entries"}</div></div>
-                <Btn variant="primary" onClick={() => { setJTitle(""); setJBody(""); setJMood("Neutral"); setJView("write"); }}>+ New Entry</Btn>
+          {jView==="list" && (
+            <div style={{ maxWidth:680, margin:"0 auto" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+                <div><div style={{ fontSize:20, fontWeight:700 }}>Journal</div><div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{posts.length} {posts.length===1?"entry":"entries"}</div></div>
+                <Btn variant="primary" onClick={()=>{setJTitle("");setJBody("");setJMood("Neutral");setJView("write");}}>+ New Entry</Btn>
               </div>
-              {posts.length > 4 && <Input value={jSearch} onChange={e => setJSearch(e.target.value)} placeholder="Search..." style={{ marginBottom: 14 }} />}
-              {filteredPosts.length === 0 && <Card style={{ textAlign: "center", padding: "40px 20px" }}><div style={{ color: C.dim }}>{posts.length === 0 ? "No entries yet." : "No results."}</div></Card>}
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {filteredPosts.map(p => (
-                  <Card key={p.id} onClick={() => { setJActive(p); setJView("read"); }} style={{ cursor: "pointer" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}><div style={{ fontSize: 14, fontWeight: 600 }}>{p.title}</div><span onClick={e => { e.stopPropagation(); setPosts(posts.filter(x => x.id !== p.id)); }} style={{ color: C.dim, cursor: "pointer", fontSize: 18 }}>×</span></div>
-                    <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginBottom: 8, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.body}</div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 11, color: C.dim }}>{p.date}</span><span style={{ fontSize: 11, color: C.dim }}>{p.wordCount} words · {p.mood}</span></div>
+              {posts.length>4&&<Input value={jSearch} onChange={e=>setJSearch(e.target.value)} placeholder="Search..." style={{ marginBottom:14 }} />}
+              {filteredPosts.length===0&&<Card style={{ textAlign:"center", padding:"40px 20px" }}><div style={{ color:C.dim }}>{posts.length===0?"No entries yet.":"No results."}</div></Card>}
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                {filteredPosts.map(p=>(
+                  <Card key={p.id} onClick={()=>{setJActive(p);setJView("read");}} style={{ cursor:"pointer" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}><div style={{ fontSize:14, fontWeight:600 }}>{p.title}</div><span onClick={e=>{e.stopPropagation();setPosts(posts.filter(x=>x.id!==p.id));}} style={{ color:C.dim, cursor:"pointer", fontSize:18 }}>×</span></div>
+                    <div style={{ fontSize:12, color:C.muted, lineHeight:1.6, marginBottom:8, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>{p.body}</div>
+                    <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ fontSize:11, color:C.dim }}>{p.date}</span><span style={{ fontSize:11, color:C.dim }}>{p.wordCount} words · {p.mood}</span></div>
                   </Card>
                 ))}
               </div>
             </div>
           )}
-          {jView === "write" && (
-            <div style={{ maxWidth: 680, margin: "0 auto" }}>
-              <div style={{ marginBottom: 20 }}><Btn size="sm" variant="ghost" onClick={() => setJView("list")}>← Back</Btn></div>
+          {jView==="write" && (
+            <div style={{ maxWidth:680, margin:"0 auto" }}>
+              <div style={{ marginBottom:20 }}><Btn size="sm" variant="ghost" onClick={()=>setJView("list")}>← Back</Btn></div>
               <Card>
-                <input value={jTitle} onChange={e => setJTitle(e.target.value)} placeholder="Title..." style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`, color: C.text, padding: "4px 0 12px", fontSize: 22, fontWeight: 700, outline: "none", marginBottom: 16, fontFamily: "inherit" }} />
-                <div style={{ marginBottom: 14 }}><Label style={{ marginBottom: 8 }}>Mood</Label><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{moods.map(m => <button key={m} onClick={() => setJMood(m)} style={{ padding: "4px 12px", borderRadius: 3, fontSize: 11, cursor: "pointer", fontFamily: "inherit", background: jMood === m ? C.accentGlow : "transparent", border: `1px solid ${jMood === m ? C.borderHi : C.border}`, color: jMood === m ? C.accent : C.muted }}>{m}</button>)}</div></div>
-                <textarea value={jBody} onChange={e => setJBody(e.target.value)} placeholder="What's on your mind..." autoFocus style={{ width: "100%", background: "transparent", border: "none", color: C.text, fontSize: 14, lineHeight: 1.8, outline: "none", resize: "vertical", minHeight: 240, fontFamily: "inherit" }} />
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}` }}><span style={{ fontSize: 12, color: C.dim }}>{jBody.trim() ? jBody.trim().split(/\s+/).length : 0} words</span><Btn variant="primary" onClick={saveJournal} disabled={!jBody.trim()}>Save Entry</Btn></div>
+                <input value={jTitle} onChange={e=>setJTitle(e.target.value)} placeholder="Title..." style={{ width:"100%", background:"transparent", border:"none", borderBottom:`1px solid ${C.border}`, color:C.text, padding:"4px 0 12px", fontSize:22, fontWeight:700, outline:"none", marginBottom:16, fontFamily:"inherit" }} />
+                <div style={{ marginBottom:14 }}><Label style={{ marginBottom:8 }}>Mood</Label><div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>{moods.map(m=><button key={m} onClick={()=>setJMood(m)} style={{ padding:"4px 12px", borderRadius:3, fontSize:11, cursor:"pointer", fontFamily:"inherit", background:jMood===m?C.accentGlow:"transparent", border:`1px solid ${jMood===m?C.borderHi:C.border}`, color:jMood===m?C.accent:C.muted }}>{m}</button>)}</div></div>
+                <textarea value={jBody} onChange={e=>setJBody(e.target.value)} placeholder="What's on your mind..." autoFocus style={{ width:"100%", background:"transparent", border:"none", color:C.text, fontSize:14, lineHeight:1.8, outline:"none", resize:"vertical", minHeight:240, fontFamily:"inherit" }} />
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:16, paddingTop:14, borderTop:`1px solid ${C.border}` }}><span style={{ fontSize:12, color:C.dim }}>{jBody.trim()?jBody.trim().split(/\s+/).length:0} words</span><Btn variant="primary" onClick={saveJournal} disabled={!jBody.trim()}>Save Entry</Btn></div>
               </Card>
             </div>
           )}
-          {jView === "read" && jActive && (
-            <div style={{ maxWidth: 680, margin: "0 auto" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 24 }}><Btn size="sm" variant="ghost" onClick={() => { setJView("list"); setJActive(null); }}>← Back</Btn><Btn size="sm" variant="danger" onClick={() => { setPosts(posts.filter(p => p.id !== jActive.id)); setJView("list"); setJActive(null); }}>Delete</Btn></div>
-              <Card><div style={{ fontSize: 11, color: C.muted, fontFamily: "'JetBrains Mono',monospace", marginBottom: 8 }}>{jActive.date} · {jActive.wordCount} words · {jActive.mood}</div><h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 20 }}>{jActive.title}</h1><div style={{ fontSize: 15, color: "#c0c8e0", lineHeight: 1.9, whiteSpace: "pre-wrap" }}>{jActive.body}</div></Card>
+          {jView==="read"&&jActive&&(
+            <div style={{ maxWidth:680, margin:"0 auto" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:24 }}><Btn size="sm" variant="ghost" onClick={()=>{setJView("list");setJActive(null);}}>← Back</Btn><Btn size="sm" variant="danger" onClick={()=>{setPosts(posts.filter(p=>p.id!==jActive.id));setJView("list");setJActive(null);}}>Delete</Btn></div>
+              <Card><div style={{ fontSize:11, color:C.muted, fontFamily:"'JetBrains Mono',monospace", marginBottom:8 }}>{jActive.date} · {jActive.wordCount} words · {jActive.mood}</div><h1 style={{ fontSize:24, fontWeight:700, marginBottom:20 }}>{jActive.title}</h1><div style={{ fontSize:15, color:"#c0c8e0", lineHeight:1.9, whiteSpace:"pre-wrap" }}>{jActive.body}</div></Card>
             </div>
           )}
         </>
@@ -1389,7 +1341,6 @@ const NotesAndJournal = ({ userId }) => {
   );
 };
 
-// ─── EVENING REPORT ───────────────────────────────────────────────────────────
 const EveningReport = ({ onClose, userId }) => {
   const [report, setReport] = useState(""); const [loading, setLoading] = useState(true); const [saved, setSaved] = useState(false);
   const [water] = useSynced(`water_${todayKey()}`, 0, userId);
@@ -1490,7 +1441,9 @@ export default function App() {
   const logout = () => { localStorage.removeItem("sb_session"); setUser(null); };
 
   const [bgTheme, setBgTheme] = useSynced("bg_theme", { type: "color", value: "default" }, user?.id);
-  const [bgImage, setBgImage] = useSynced("bg_image", null, user?.id);
+  // bgImage stored in localStorage only (too large for Supabase)
+  const [bgImage, setBgImageRaw] = useState(() => { try { return localStorage.getItem("vince_bg_image") || null; } catch { return null; } });
+  const setBgImage = (val) => { setBgImageRaw(val); if (val) { try { localStorage.setItem("vince_bg_image", val); } catch { console.warn("BG image too large for localStorage"); } } else { localStorage.removeItem("vince_bg_image"); } };
   const bgFileRef = useRef();
 
   if (!user) return <AuthScreen onLogin={u => setUser(u)} />;
